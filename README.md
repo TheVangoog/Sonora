@@ -7,6 +7,8 @@
 Tune your strings, find a note, or strum a chord: Sonora names it and shows which notes it hears.
 No server, no sign-up, and the sound never leaves your device.
 
+### [▶ Try it live: sonora-one-wheat.vercel.app](https://sonora-one-wheat.vercel.app)
+
 <img src="docs/images/chords.gif" alt="Sonora recognizing Am, C, G, Em and D from the test signal" width="720">
 
 </div>
