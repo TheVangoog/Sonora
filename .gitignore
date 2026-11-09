@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Audio test data: large (GuitarSet ~2 GB) or private (own recordings).
+tests/recordings/*
+!tests/recordings/README.md
+
+# Local tool settings
+.claude/
+.openai/
+.vercel/
