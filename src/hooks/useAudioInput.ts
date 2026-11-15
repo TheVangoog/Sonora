@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioInput, idleState } from "../audio/AudioInput.ts";
-import type { AudioMode } from "../audio/AudioInput.ts";
+import type { AudioMode, FrameSize } from "../audio/AudioInput.ts";
 import { FRAME_SIZE } from "../audio/signal.ts";
 
-// frameSize: how many samples readFrame() returns. Tuner 2048, chords 8192.
+// frameSize: how many samples readFrame() returns (see FrameSize). Chords 8192.
 // historySeconds: how many seconds of continuous sound to keep for the AI (0 = none).
-export function useAudioInput(frameSize = FRAME_SIZE, historySeconds = 0) {
+export function useAudioInput(frameSize: FrameSize = FRAME_SIZE, historySeconds = 0) {
   const input = useRef<AudioInput | null>(null);
   const [state, setState] = useState(idleState);
   const [frequency, setFrequency] = useState(440);

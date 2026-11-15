@@ -31,7 +31,11 @@ type Session = {
   ready: boolean;
 };
 
-// frameSize: 2048 for the tuner, 8192 for chords.
+// frameSize: samples per readFrame(). A number (8192 for chords) or a function of
+// the sample rate (the tuner, see tunerFrameSize()), because the rate is known only
+// once the AudioContext exists.
+export type FrameSize = number | ((sampleRate: number) => number);
+
 // historySeconds > 0 also keeps that much continuous sound for the AI (see readHistory()).
 export class AudioInput {
   private generation = 0;
@@ -40,12 +44,12 @@ export class AudioInput {
   private demoWaveform: OscillatorType = "sine";
   private amplitude = 0.2;
   private notify: (state: InputState) => void;
-  private readonly frameSize: number;
+  private readonly frameSize: FrameSize;
   private readonly historySeconds: number;
 
   constructor(
     notify: (state: InputState) => void,
-    frameSize = FRAME_SIZE,
+    frameSize: FrameSize = FRAME_SIZE,
     historySeconds = 0,
   ) {
     this.notify = notify;
@@ -99,7 +103,11 @@ export class AudioInput {
   private createSession(): Session {
     const context = new AudioContext();
     const analyser = context.createAnalyser();
-    analyser.fftSize = this.frameSize;
+    const frameSize =
+      typeof this.frameSize === "function"
+        ? this.frameSize(context.sampleRate)
+        : this.frameSize;
+    analyser.fftSize = frameSize;
     const mute = context.createGain();
     mute.gain.value = 0;
     analyser.connect(mute);
@@ -109,7 +117,7 @@ export class AudioInput {
       context,
       analyser,
       mute,
-      samples: new Float32Array(this.frameSize),
+      samples: new Float32Array(frameSize),
       oscillators: [],
       ready: false,
     };

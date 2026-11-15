@@ -17,7 +17,7 @@ No server, no sign-up, and the sound never leaves your device.
 
 ## Features
 
-- **Tuner** — chromatic or guitar mode (standard tuning, auto or manual string), A₄ reference 432–442 Hz, a smooth needle in cents.
+- **Tuner** — YIN pitch detection, chromatic or guitar mode (standard tuning, auto or manual string), A₄ reference 432–442 Hz, a smooth needle in cents.
 - **Note finder** — shows the note and octave on a piano keyboard.
 - **Chord recognizer** — 108 chords: major, minor, 7, maj7, m7, dim, m7♭5, aug and power chords.
 - **Two engines, one switch:**
@@ -40,7 +40,7 @@ No server, no sign-up, and the sound never leaves your device.
 ## How it works
 
 ```
-microphone ─▶ Web Audio ─┬─▶ Pitchy (McLeod) ───────────────▶ note + cents      (tuner)
+microphone ─▶ Web Audio ─┬─▶ YIN ───────────────────────────▶ note + cents      (tuner)
                          │
                          ├─▶ FFT ─▶ 12-note chroma ─┐
                          │                          ├─▶ 108 chord templates ─▶ live tracker ─▶ chord
@@ -91,6 +91,7 @@ npm run preview    # serve the production build
 | `npm run tune:chord-rules` | Tunes when a seventh / power chord is accepted |
 | `npm run replay:live` | Replays recordings through the live page logic (flicker, dropouts) |
 | `npm run bench:basic-pitch` | Measures the AI's speed |
+| `npm run measure:tuner` | Tuner error in cents on test tones and guitar strings |
 
 Recordings are not part of the repository (GuitarSet is ~2 GB). See [`tests/recordings/README.md`](tests/recordings/README.md).
 
@@ -108,12 +109,12 @@ docs/             notes and results (in Ukrainian)
 
 ## Tech
 
-React 19 · TypeScript · Vite · Web Audio API (AudioWorklet) · [Pitchy](https://github.com/ianprime0509/pitchy) · TensorFlow.js · [Basic Pitch](https://github.com/spotify/basic-pitch)
+React 19 · TypeScript · Vite · Web Audio API (AudioWorklet) · YIN pitch detection · TensorFlow.js · [Basic Pitch](https://github.com/spotify/basic-pitch)
 
 ## Credits
 
 - **Basic Pitch** by Spotify — Apache License 2.0 (model files in `public/models/basic-pitch`, with its license).
 - **GuitarSet** — Q. Xi, R. Bittner, J. Pauwels, X. Ye, J. P. Bello, *GuitarSet: A Dataset for Guitar Transcription*, ISMIR 2018. CC BY 4.0.
-- **Pitchy** — MIT.
+- **YIN** — A. de Cheveigné, H. Kawahara, *YIN, a fundamental frequency estimator for speech and music*, JASA 111(4), 2002. Our own implementation in `src/audio/yin.ts`.
 
 Sonora is my bachelor's thesis project.

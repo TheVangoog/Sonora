@@ -19,11 +19,11 @@
     "tune:basic-pitch": "node scripts/tune-basic-pitch.ts",
     "bench:basic-pitch": "node scripts/bench-basic-pitch.ts",
     "tune:chord-rules": "node scripts/tune-chord-rules.ts",
-    "replay:live": "node scripts/replay-live.ts"
+    "replay:live": "node scripts/replay-live.ts",
+    "measure:tuner": "node scripts/measure-tuner.ts"
   },
   "dependencies": {
     "@spotify/basic-pitch": "^1.0.1",
-    "pitchy": "^4.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router": "^7.9.0"

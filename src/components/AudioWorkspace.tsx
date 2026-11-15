@@ -5,6 +5,7 @@ import AudioStatusBadge from "./AudioStatusBadge.tsx";
 import AudioSourceControls from "./AudioSourceControls.tsx";
 import { useAudioInput } from "../hooks/useAudioInput.ts";
 import { usePitchDetection } from "../hooks/usePitchDetection.ts";
+import { tunerFrameSize } from "../audio/pitch.ts";
 import type { PitchReading } from "../audio/pitch.ts";
 
 // Workspace for a single tone (tuner and note finder).
@@ -19,7 +20,7 @@ export default function AudioWorkspace({
   icon = "tune",
   children,
 }: Props) {
-  const audio = useAudioInput();
+  const audio = useAudioInput(tunerFrameSize);
   const pitch = usePitchDetection(audio.status === "running", audio.readFrame);
 
   return (
@@ -41,6 +42,7 @@ export default function AudioWorkspace({
         running={audio.status === "running"}
         sampleRate={audio.sampleRate}
         readFrame={audio.readFrame}
+        frameSize={audio.sampleRate ? tunerFrameSize(audio.sampleRate) : undefined}
       />
       <AudioSourceControls
         status={audio.status}

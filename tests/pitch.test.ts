@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ToneDetector } from "../src/audio/pitch.ts";
-import { FRAME_SIZE } from "../src/audio/signal.ts";
+import { ToneDetector, tunerFrameSize } from "../src/audio/pitch.ts";
 import { frequencyToNote } from "../src/audio/notes.ts";
+
+const FRAME_SIZE = tunerFrameSize(48000);
 
 function sine(
   frequency: number,
@@ -11,7 +12,7 @@ function sine(
   offset = 0,
 ) {
   return Float32Array.from(
-    { length: FRAME_SIZE },
+    { length: tunerFrameSize(sampleRate) },
     (_, i) =>
       offset +
       amplitude * Math.sin((2 * Math.PI * frequency * i) / sampleRate + 0.7),
@@ -19,8 +20,8 @@ function sine(
 }
 
 for (const sampleRate of [44100, 48000, 96000]) {
-  test(`real Pitchy detects guitar strings and test tones at ${sampleRate} samples/s`, () => {
-    const detector = new ToneDetector(FRAME_SIZE);
+  test(`YIN detects guitar strings and test tones at ${sampleRate} samples/s`, () => {
+    const detector = new ToneDetector();
     for (const frequency of [
       82.4069, 110, 146.8324, 196, 246.9417, 329.6276, 440, 880, 1000,
     ]) {
@@ -50,14 +51,14 @@ test("a signal with harmonics resolves to its fundamental", () => {
       0.08 * Math.sin(3 * phase)
     );
   });
-  const result = new ToneDetector(FRAME_SIZE).analyze(samples, 48000);
+  const result = new ToneDetector().analyze(samples, 48000);
   assert.equal(result.status, "detected");
   if (result.status === "detected")
     assert.ok(Math.abs(1200 * Math.log2(result.frequency / fundamental)) < 2);
 });
 
 test("silence, sub-threshold audio and constant offset never produce a note", () => {
-  const detector = new ToneDetector(FRAME_SIZE);
+  const detector = new ToneDetector();
   for (const input of [
     new Float32Array(FRAME_SIZE),
     sine(440, 48000, 0.0001),
@@ -69,7 +70,7 @@ test("silence, sub-threshold audio and constant offset never produce a note", ()
 });
 
 test("a DC offset does not hide a usable musical tone", () => {
-  const result = new ToneDetector(FRAME_SIZE).analyze(
+  const result = new ToneDetector().analyze(
     sine(440, 48000, 0.2, 0.5),
     48000,
   );
@@ -84,26 +85,37 @@ test("deterministic broadband noise is rejected", () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return (seed / 2 ** 32 - 0.5) * 0.5;
   });
-  const result = new ToneDetector(FRAME_SIZE).analyze(noise, 48000);
+  const result = new ToneDetector().analyze(noise, 48000);
   assert.equal(result.status, "unclear");
   assert.equal(result.frequency, null);
 });
 
 test("out-of-range tones are not displayed as supported notes", () => {
-  const detector = new ToneDetector(FRAME_SIZE);
-  for (const frequency of [50, 1800]) {
+  const detector = new ToneDetector();
+  // Above the range YIN still finds the period and says so; below 60 Hz the
+  // period is longer than the searched lags, so there is no dip at all.
+  for (const [frequency, status] of [
+    [50, "unclear"],
+    [1800, "out-of-range"],
+  ] as const) {
     const result = detector.analyze(sine(frequency), 48000);
-    assert.equal(
-      result.status,
-      "out-of-range",
-      `${frequency} Hz: ${JSON.stringify(result)}`,
-    );
+    assert.equal(result.status, status, `${frequency} Hz: ${JSON.stringify(result)}`);
     assert.equal(result.frequency, null);
   }
 });
 
+test("the tuner frame holds two E2 periods after the longest searched lag", () => {
+  assert.equal(tunerFrameSize(44100), 2048);
+  assert.equal(tunerFrameSize(48000), 2048);
+  assert.equal(tunerFrameSize(96000), 4096);
+  for (const rate of [44100, 48000, 96000]) {
+    const window = tunerFrameSize(rate) - Math.ceil(rate / 60);
+    assert.ok(window >= (2 * rate) / 82.4069, `${rate}: window ${window}`);
+  }
+});
+
 test("invalid samples, input length and sampleRate are rejected", () => {
-  const detector = new ToneDetector(FRAME_SIZE);
+  const detector = new ToneDetector();
   for (const rate of [0, -1, NaN, Infinity])
     assert.equal(detector.analyze(sine(440), rate).status, "unclear");
   for (const value of [NaN, Infinity]) {
@@ -115,7 +127,7 @@ test("invalid samples, input length and sampleRate are rejected", () => {
 });
 
 test("quiet frames clear a previously detected note", () => {
-  const detector = new ToneDetector(FRAME_SIZE);
+  const detector = new ToneDetector();
   assert.equal(detector.analyze(sine(440), 48000).status, "detected");
   assert.equal(
     detector.analyze(new Float32Array(FRAME_SIZE), 48000).frequency,

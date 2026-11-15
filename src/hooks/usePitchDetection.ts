@@ -14,8 +14,7 @@ export function usePitchDetection(
   useEffect(() => {
     setPitch(IDLE_PITCH);
     if (!running) return;
-    let detector: ToneDetector | null = null;
-    let frameSize = 0;
+    const detector = new ToneDetector();
     const smoother = new PitchSmoother();
     let request = 0;
     let lastAnalysis = -Infinity;
@@ -25,10 +24,6 @@ export function usePitchDetection(
       if (time - lastAnalysis >= 75) {
         const frame = readFrame();
         if (frame) {
-          if (!detector || frameSize !== frame.samples.length) {
-            frameSize = frame.samples.length;
-            detector = new ToneDetector(frameSize);
-          }
           const raw = detector.analyze(frame.samples, frame.sampleRate);
           setPitch(smoother.push(raw, time));
         } else {

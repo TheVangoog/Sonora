@@ -93,12 +93,12 @@ flowchart TD
     RawLevel --> Meter["RMS, dBFS, попередження"]
     Hook --> Detector["ToneDetector.analyze()<br/>копія centered"]
     Detector --> CenteredLevel["measureSignal(centered)<br/>перевірка після центрування"]
-    CenteredLevel --> Pitchy["Pitchy.findPitch()<br/>частота + clarity"]
+    CenteredLevel --> Pitchy["Yin.estimate()<br/>період → частота + clarity"]
     Pitchy --> ReactState["PitchReading у стані React"]
     ReactState --> Displays["TunerDisplay / NoteDisplay"]
 ```
 
-Кожен споживач **сам викликає `readFrame()`**. `SignalMonitor` не передає результат малювання в Pitchy. Обидва використовують один багаторазовий масив `session.samples`, який перезаписується при читанні; це свіжий знімок, а не накопичення запису. Обробка виконується синхронно в межах відповідного виклику. `ToneDetector` записує підготовлені значення у свій `centered`, не змінюючи вихідний масив.
+Кожен споживач **сам викликає `readFrame()`**. `SignalMonitor` не передає результат малювання в YIN. Обидва використовують один багаторазовий масив `session.samples`, який перезаписується при читанні; це свіжий знімок, а не накопичення запису. Обробка виконується синхронно в межах відповідного виклику. `ToneDetector` записує підготовлені значення у свій `centered`, не змінюючи вихідний масив.
 
 Хвиля оновлюється через `requestAnimationFrame`; її числові показники — не частіше ніж раз на 100 мс. Аналіз частоти має власний цикл із перевіркою інтервалу щонайменше 75 мс. Частота оновлень інтерфейсу **не дорівнює `sampleRate`**: одна стосується кадрів інтерфейсу, інша — вимірювань звуку за секунду.
 
@@ -582,9 +582,9 @@ flowchart TD
     Validate --> Center["Відняти середнє → centered"]
     Center --> Level{"Рівень нижче -55 dBFS?"}
     Level -->|"так"| Quiet["quiet, frequency: null"]
-    Level -->|"ні"| Pitchy["Pitchy.findPitch(centered, sampleRate)"]
-    Pitchy --> Clamp["clarity → safeClarity у межах 0…1"]
-    Clamp --> Valid{"Частота придатна і clarity ≥ 0.9?"}
+    Level -->|"ні"| Pitchy["Yin.estimate(centered, minLag, maxLag, 0.15)"]
+    Pitchy --> Clamp["clarity = 1 − d′(τ) у межах 0…1"]
+    Clamp --> Valid{"Період знайдено і clarity ≥ 0.8?"}
     Valid -->|"ні"| Unclear["unclear, frequency: null"]
     Valid -->|"так"| Range{"60…1500 Hz?"}
     Range -->|"ні"| Out["out-of-range, frequency: null"]
@@ -592,7 +592,7 @@ flowchart TD
     Validate -. "непридатний вхід" .-> Unclear
 ```
 
-`ToneDetector` один раз створює Pitchy та робочий масив `centered`. `analyze()` повторно використовує їх. Межі 60–1500 Hz, −55 dBFS і clarity 0.9 — **наша поточна політика прийняття**, не універсальні межі слуху чи браузера. Clarity не є ймовірністю правильної ноти. `IDLE_PITCH` — початковий стан, `PITCH_MESSAGES` — тексти для інтерфейсу.
+`ToneDetector` один раз створює `Yin` (`src/audio/yin.ts`) та робочий масив `centered`. `analyze()` повторно використовує їх. YIN: різницева функція d(τ), кумулятивна нормалізація середнім d′(τ), абсолютний поріг 0.15 (перший мінімум під порогом, інакше глобальний мінімум), парабола навколо мінімуму d(τ). Довжина рамця залежить від `sampleRate` (`tunerFrameSize`): найдовший період 60 Hz + вікно з двох періодів E2; 44,1 і 48 kHz → 2048, 96 kHz → 4096. Межі 60–1500 Hz, −55 dBFS і clarity 0.8 — **наша поточна політика прийняття**, не універсальні межі слуху чи браузера. Clarity не є ймовірністю правильної ноти. `IDLE_PITCH` — початковий стан, `PITCH_MESSAGES` — тексти для інтерфейсу.
 
 ### `src/audio/notes.ts`
 
@@ -617,7 +617,7 @@ flowchart TD
 
 ## 11. Імпорти: хто використовує кого
 
-Тут стрілка означає **імпорт**, а не потік звуку. У схемах показані внутрішні залежності файлів; React, Router і Pitchy — зовнішні бібліотеки. Типові імпорти `import type` не створюють окремого виконання в браузері.
+Тут стрілка означає **імпорт**, а не потік звуку. У схемах показані внутрішні залежності файлів; React і Router — зовнішні бібліотеки. Типові імпорти `import type` не створюють окремого виконання в браузері.
 
 ### Центральні аудіозалежності
 
@@ -631,7 +631,7 @@ flowchart LR
     Monitor --> Signal
     PitchHook --> Pitch["pitch.ts"]
     Pitch --> Signal
-    Pitch --> Pitchy["pitchy: зовнішня бібліотека"]
+    Pitch --> Yin["yin.ts: алгоритм YIN"]
     Tuner["TunerDisplay.tsx"] --> Notes["notes.ts"]
     NoteDisplay["NoteDisplay.tsx"] --> Notes
     Tuner --> Pitch
@@ -664,7 +664,7 @@ flowchart LR
     AudioTest["audio-input.test.ts"] --> Mock["Підставні браузерні об’єкти"]
     Mock --> Input["AudioInput.ts: життєвий цикл"]
     PitchTest["pitch.test.ts"] --> Synthetic["Чисельно створені сигнали"]
-    Synthetic --> Real["ToneDetector + справжня Pitchy"]
+    Synthetic --> Real["ToneDetector + YIN"]
     PitchTest --> Notes["frequencyToNote()"]
     SignalTest["signal.test.ts"] --> Signal["measureSignal()"]
 ```
@@ -672,7 +672,7 @@ flowchart LR
 | Файл | Перевірки | Межа перевірки |
 | --- | --- | --- |
 | [tests/audio-input.test.ts](C:/Users/theva/Documents/Codex/2026-10-08/hudobn-ci-asto-vyu-vaj-softv/outputs/sonora/tests/audio-input.test.ts) | Зупинка й очищення, запізнілий дозвіл/відмова, dispose, від’єднання, пауза й відновлення | Моки, а не фізичний мікрофон або реальний браузер |
-| [tests/pitch.test.ts](C:/Users/theva/Documents/Codex/2026-10-08/hudobn-ci-asto-vyu-vaj-softv/outputs/sonora/tests/pitch.test.ts) | Синусоїди при 44.1/48/96 kHz, гармоніки, тиша, шум, DC offset, межі, невалідний вхід, ноти, центи й еталон | Справжня Pitchy; штучні сигнали, не всі реальні інструменти |
+| [tests/pitch.test.ts](C:/Users/theva/Documents/Codex/2026-10-08/hudobn-ci-asto-vyu-vaj-softv/outputs/sonora/tests/pitch.test.ts) | Синусоїди при 44.1/48/96 kHz, гармоніки, тиша, шум, DC offset, межі, невалідний вхід, ноти, центи й еталон | Справжній YIN; штучні сигнали, не всі реальні інструменти |
 | [tests/signal.test.ts](C:/Users/theva/Documents/Codex/2026-10-08/hudobn-ci-asto-vyu-vaj-softv/outputs/sonora/tests/signal.test.ts) | RMS/dBFS тиші й синусоїди, зміна рівня, знаки й значення понад шкалу | Числові розрахунки, не акустична гучність у кімнаті |
 
 Математичний тест може підтвердити результат для заданих чисел. Він не підтверджує дозвіл мікрофона, затримку чи точність на конкретному телефоні. Ці сценарії потребують окремої перевірки у браузері.
@@ -729,7 +729,7 @@ flowchart LR
 | RMS | Міра величини сигналу за фрагментом через середній квадрат і корінь |
 | dBFS | Рівень цифрового сигналу відносно амплітудної шкали 1; не dB SPL у кімнаті |
 | DC offset | Постійне зміщення середнього рівня сигналу; його віднімання не є видаленням сторонніх звуків |
-| Clarity | Оцінка чіткості періодичності Pitchy, не ймовірність правильності |
+| Clarity | 1 − d′(τ) з YIN: наскільки сигнал періодичний; не ймовірність правильності |
 | Cent / цент | 1/100 півтону; використовується для відхилення від цільової ноти |
 | AudioContext | Середовище аудіообробки, яке створює вузли й керує їхнім часом |
 | AudioNode / вузол | Об’єкт аудіообробки, який можна з’єднувати з іншими |
