@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppIcon from "./AppIcon.jsx";
-import { recordTake } from "../audio/takeRecorder.ts";
+import { openTakeRecorder, RecordingCancelled, wait } from "../audio/takeRecorder.ts";
+import type { TakeRecorder } from "../audio/takeRecorder.ts";
 import { encodeWav } from "../audio/wav.ts";
 import type { DecodedAudio } from "../audio/wav.ts";
 import { measureSignal } from "../audio/signal.ts";
@@ -11,7 +12,7 @@ import { ChordDetector, CHORD_FRAME_SIZE } from "../audio/chords.ts";
 const TAKE_SECONDS = 3;
 const COUNTDOWN_SECONDS = 3;
 
-type Phase = "ready" | "countdown" | "recording" | "done" | "error";
+type Phase = "ready" | "preparing" | "countdown" | "recording" | "done" | "error";
 
 export default function RecordWorkspace() {
   const [label, setLabel] = useState("Am");
@@ -22,22 +23,45 @@ export default function RecordWorkspace() {
   // How many takes are already saved per label (for the number in the file name).
   const [savedCounts, setSavedCounts] = useState<Record<string, number>>({});
 
+  // Aborting it stops the countdown, the take and the microphone.
+  const running = useRef<AbortController | null>(null);
+  useEffect(() => () => running.current?.abort(), []);
+  const busy = phase === "preparing" || phase === "countdown" || phase === "recording";
+
+  // Microphone first, countdown second: the take starts exactly at "Play!".
   async function startTake() {
+    running.current?.abort();
+    const controller = new AbortController();
+    running.current = controller;
+    const { signal } = controller;
     setError(null);
     setTake(null);
-    setPhase("countdown");
-    for (let s = COUNTDOWN_SECONDS; s > 0; s--) {
-      setCountdown(s);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-    setPhase("recording");
+    setPhase("preparing");
+    let recorder: TakeRecorder | null = null;
     try {
-      setTake(await recordTake(TAKE_SECONDS));
+      recorder = await openTakeRecorder(signal);
+      setPhase("countdown");
+      for (let s = COUNTDOWN_SECONDS; s > 0; s--) {
+        setCountdown(s);
+        await wait(1000, signal);
+      }
+      setPhase("recording");
+      setTake(await recorder.record(TAKE_SECONDS, signal));
       setPhase("done");
     } catch (reason) {
+      if (reason instanceof RecordingCancelled) return;
       setError(reason instanceof Error ? reason.message : String(reason));
       setPhase("error");
+    } finally {
+      recorder?.close();
+      if (running.current === controller) running.current = null;
     }
+  }
+
+  function cancelTake() {
+    running.current?.abort();
+    running.current = null;
+    setPhase("ready");
   }
 
   function saveTake() {
@@ -77,18 +101,23 @@ export default function RecordWorkspace() {
         </div>
 
         <p className="record-step">2. Record ({TAKE_SECONDS} s)</p>
-        <button
-          className="microphone-button"
-          onClick={startTake}
-          disabled={phase === "countdown" || phase === "recording"}
-        >
-          <AppIcon name="mic" size={18} />
-          {phase === "countdown"
-            ? `Get ready… ${countdown}`
-            : phase === "recording"
-              ? "Play! Recording…"
-              : `Record “${label}”`}
-        </button>
+        <div className="audio-buttons">
+          <button className="microphone-button" onClick={startTake} disabled={busy}>
+            <AppIcon name="mic" size={18} />
+            {phase === "preparing"
+              ? "Waiting for the microphone…"
+              : phase === "countdown"
+                ? `Get ready… ${countdown}`
+                : phase === "recording"
+                  ? "Play! Recording…"
+                  : `Record “${label}”`}
+          </button>
+          {busy && (
+            <button className="demo-button" onClick={cancelTake}>
+              Cancel
+            </button>
+          )}
+        </div>
         {error && (
           <p className="audio-error" role="alert">
             {error}
