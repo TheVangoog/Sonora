@@ -87,8 +87,8 @@ npm run preview    # serve the production build
 |---|---|
 | `npm run eval` | Runs both engines over `tests/recordings/real` and writes a report |
 | `npm run make:guitarset-ext` / `npm run eval:guitarset-ext` | Builds and evaluates the GuitarSet test set |
-| `npm run tune:basic-pitch` | Tunes the AI's note threshold |
-| `npm run tune:chord-rules` | Tunes when a seventh / power chord is accepted |
+| `npm run tune:dev` | Tunes the chord thresholds on the dev part of GuitarSet (players 00–03) |
+| `npm run eval:test` | One run on the test part (players 04–05) with the frozen config |
 | `npm run replay:live` | Replays recordings through the live page logic (flicker, dropouts) |
 | `npm run bench:basic-pitch` | Measures the AI's speed |
 | `npm run measure:tuner` | Tuner error in cents on test tones and guitar strings |

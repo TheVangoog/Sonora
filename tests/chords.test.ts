@@ -51,9 +51,13 @@ test("pitch classes fold octaves together", () => {
   assert.equal(pitchClassOf(261.63), 0); // C4
 });
 
+// The deployed DSP margins (extendedMargin 1) almost never name a seventh chord,
+// so the margin mechanism itself is tested with the earlier, small margins.
+const SMALL_MARGINS = { extendedMargin: 0.08, powerMargin: 0.15 };
+
 for (const sampleRate of [44100, 48000]) {
   test(`all open guitar chords are recognized at ${sampleRate} samples/s`, () => {
-    const detector = new ChordDetector(CHORD_FRAME_SIZE);
+    const detector = new ChordDetector(CHORD_FRAME_SIZE, SMALL_MARGINS);
     let exactNonStandard = 0;
     for (const [name, midis] of Object.entries(DEMO_CHORD_VOICINGS)) {
       const reading = detector.analyze(strum(midis, sampleRate), sampleRate);
@@ -168,7 +172,7 @@ function roomNoise(level = 0.01, hum = 0.004) {
 
 test("quiet chords in a noisy room are still recognized", () => {
   // level 0.05 ≈ −36 dBFS; the room noise alone is ≈ −44 dBFS.
-  const detector = new ChordDetector(CHORD_FRAME_SIZE);
+  const detector = new ChordDetector(CHORD_FRAME_SIZE, SMALL_MARGINS);
   const noise = roomNoise();
   let correct = 0;
   for (const [name, midis] of Object.entries(DEMO_CHORD_VOICINGS)) {
@@ -293,9 +297,11 @@ test("Basic Pitch floor: notes above it count, notes below it are ignored", () =
 test("a non-standard chord must clearly beat the best major/minor chord", async () => {
   const { classifyChroma } = await import("../src/audio/chords.ts");
   const gWithWeakFSharp = [0, 0, 1, 0, 0, 0, 0.5, 1, 0, 0, 0, 1]; // G B D + a little F♯ (a harmonic)
-  assert.equal(classifyChroma(gWithWeakFSharp, -30).chord?.name, "G");
+  assert.equal(classifyChroma(gWithWeakFSharp, -30, SMALL_MARGINS).chord?.name, "G");
   const gMaj7 = [0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1]; // G B D F♯, all clear
-  assert.equal(classifyChroma(gMaj7, -30).chord?.name, "Gmaj7");
+  assert.equal(classifyChroma(gMaj7, -30, SMALL_MARGINS).chord?.name, "Gmaj7");
+  // The deployed DSP rules (margin 1) keep the simpler name.
+  assert.equal(classifyChroma(gMaj7, -30).chord?.name, "G");
   // With the basic vocabulary only the 24 major/minor chords exist.
   assert.equal(classifyChroma(gMaj7, -30, { vocabulary: "basic" }).chord?.name, "G");
 });
@@ -303,7 +309,7 @@ test("a non-standard chord must clearly beat the best major/minor chord", async 
 test("the fifth may be missing in a seventh chord, but not in a triad", async () => {
   const { classifyChroma } = await import("../src/audio/chords.ts");
   const c7WithoutG = [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]; // C E B♭ (shape x32310)
-  assert.equal(classifyChroma(c7WithoutG, -30).chord?.name, "C7");
+  assert.equal(classifyChroma(c7WithoutG, -30, SMALL_MARGINS).chord?.name, "C7");
 });
 
 test("chords made of the same notes count as the same chord", async () => {
@@ -332,4 +338,18 @@ test("live tracker keeps the last chord for a while after the sound stops", asyn
   assert.equal(quiet.shownChord, null);
   assert.equal(quiet.heldChord?.name, "Am", "still shown, faded");
   assert.equal(tracker.update(nothing, false, 4000).heldChord, null, "gone after the hold");
+});
+
+test("deployed DSP rules: a non-standard chord gets a simpler name: same root or only played notes", () => {
+  const detector = new ChordDetector(CHORD_FRAME_SIZE);
+  for (const [name, midis] of Object.entries(DEMO_CHORD_VOICINGS)) {
+    const played = findTemplate(name)!;
+    if (played.quality === "major" || played.quality === "minor") continue;
+    const reading = detector.analyze(strum(midis, 48000), 48000);
+    if (reading.status !== "detected") continue;
+    // G7 → G and Am7 → C use only played notes; Bdim → Bm keeps the root but adds
+    // F♯, which was not played: the price of margin 1, see tune-dev-2026-11-18.md.
+    const onlyPlayed = reading.chord.tones.every((tone) => played.tones.includes(tone));
+    assert.ok(onlyPlayed || reading.chord.root === played.root, `${name} → ${reading.chord.name}`);
+  }
 });

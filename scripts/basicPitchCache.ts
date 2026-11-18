@@ -1,5 +1,5 @@
 // The Basic Pitch network's output for every window of a file, saved to disk.
-// Used by scripts/tune-basic-pitch.ts and scripts/tune-chord-rules.ts.
+// Used by scripts/tune-on-dev.ts and scripts/evaluate-test.ts.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { decodeWav } from "../src/audio/wav.ts";
 import { MIN_CHORD_DBFS } from "../src/audio/chords.ts";

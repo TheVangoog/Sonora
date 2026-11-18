@@ -13,17 +13,17 @@ export const BASIC_PITCH_WINDOW = 43844;
 // Its output has 88 rows: one per piano key, from A0 (MIDI 21) up.
 const LOWEST_MIDI = 21;
 // Note activity (0 … 1) below this counts as "not playing". The library default
-// 0.25 stayed silent on many real chords; 0.075 is tuned with
-// `npm run tune:basic-pitch` (docs/results/tune-basic-pitch-2026-11-07.md).
-export const DEFAULT_ACTIVATION_FLOOR = 0.075;
+// 0.25 stayed silent on many real chords; 0.07 is tuned on the dev part of
+// GuitarSet (`npm run tune:dev`, docs/results/tune-dev-2026-11-18.md).
+export const DEFAULT_ACTIVATION_FLOOR = 0.07;
 
-// ChordRules for this engine (tuned: docs/results/tune-chord-rules-*.md).
+// ChordRules for this engine, tuned with the floor (docs/results/tune-dev-2026-11-18.md).
 // The network reports notes without harmonics, so small margins are enough.
 export const BASIC_PITCH_RULES: ChordRules = {
   ...DEFAULT_RULES,
-  extendedMargin: 0.02,
-  powerMargin: 0.06,
-  fallback: "ifHeard",
+  extendedMargin: 0.04,
+  powerMargin: 0.04,
+  fallback: "always",
 };
 
 /**

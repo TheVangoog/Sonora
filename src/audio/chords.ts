@@ -48,9 +48,12 @@ export const DEFAULT_RULES: ChordRules = {
   minScore: MIN_CHORD_SCORE,
   minToneLevel: MIN_TONE_LEVEL,
   vocabulary: "extended",
-  // Tuned with `npm run tune:chord-rules` (433/762 vs 399/762 major/minor only).
-  extendedMargin: 0.08,
-  powerMargin: 0.15,
+  // Tuned on the dev part of GuitarSet only (`npm run tune:dev`, frozen in
+  // scripts/chord-eval.config.json). Margin 1 = a seventh chord is named only
+  // when no major/minor fits at all: on dev every smaller margin named more
+  // wrong chords than it gained right ones (docs/results/tune-dev-2026-11-18.md).
+  extendedMargin: 1,
+  powerMargin: 0.2,
   fallback: "always",
 };
 

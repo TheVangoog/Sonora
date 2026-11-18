@@ -32,7 +32,7 @@ const ENGINES: Record<string, () => ChordEngine> = {
 type FileResult = {
   file: string;
   expected: string; // chord name or "—"
-  predicted: string; // majority vote of the windows
+  predicted: string; // the most frequent chord among windows with an answer
   windowsCorrect: number;
   windowsTotal: number;
   milliseconds: number[]; // time of each analysis
@@ -169,7 +169,7 @@ const name = folder.split("/").filter(Boolean).pop();
 const text = [
   `# Evaluation: ${name} (${date})`,
   "",
-  `Folder \`${folder}\`, ${files.length} files. Each take is cut into non-overlapping windows after the first ${SKIP_SECONDS} s; the file's answer is the majority vote of its windows. "—" = no chord.`,
+  `Folder \`${folder}\`, ${files.length} files. Each take is cut into non-overlapping windows after the first ${SKIP_SECONDS} s; the file's answer is the most frequent chord among the windows with an answer. "—" = no chord.`,
   "",
   ...sections,
 ].join("\n");

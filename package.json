@@ -16,9 +16,9 @@
     "eval:guitarset": "node scripts/evaluate.ts tests/recordings/guitarset-segments",
     "make:guitarset-ext": "node scripts/make-guitarset-set.ts --extended",
     "eval:guitarset-ext": "node scripts/evaluate.ts tests/recordings/guitarset-segments-ext",
-    "tune:basic-pitch": "node scripts/tune-basic-pitch.ts",
+    "tune:dev": "node scripts/tune-on-dev.ts",
+    "eval:test": "node scripts/evaluate-test.ts",
     "bench:basic-pitch": "node scripts/bench-basic-pitch.ts",
-    "tune:chord-rules": "node scripts/tune-chord-rules.ts",
     "replay:live": "node scripts/replay-live.ts",
     "measure:tuner": "node scripts/measure-tuner.ts"
   },

@@ -15,6 +15,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { decodeWav, encodeWav } from "../src/audio/wav.ts";
 import { harteToChord, harteToTriad } from "./guitarsetLabels.ts";
+import { partOf, readConfig } from "./chordEval.ts";
 
 // ---------- Settings ----------
 const RAW_DIR = "tests/recordings/guitarset";
@@ -90,5 +91,11 @@ console.log(`\n${total} chord files from ${titles.length} recordings → ${OUT_D
 console.log(
   `Skipped: ${skipped.short} shorter than ${MIN_SECONDS} s, ${skipped.noTriad} without a chord Sonora knows, ` +
     `${skipped.disagree} where the played chord differs from the sheet.`,
+);
+const config = readConfig();
+const perPart = { dev: 0, test: 0 };
+for (const file of readdirSync(OUT_DIR)) perPart[partOf(file, config)]++;
+console.log(
+  `Split by player: dev (${config.split.dev.join(", ")}) ${perPart.dev} files, test (${config.split.test.join(", ")}) ${perPart.test} files.`,
 );
 console.log([...perChord.entries()].sort().map(([chord, n]) => `${chord}: ${n}`).join(", "));
