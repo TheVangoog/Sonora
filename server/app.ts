@@ -1,23 +1,39 @@
-// The REST API. The frontend reaches it under /api on its own origin (Vercel
-// rewrites /api/* to this server), so the login cookie is first-party.
+// The REST API. In production it runs as one Vercel Function in the same
+// project as the frontend (api/index.ts), so /api/* is on the site's own
+// domain and the login cookie is first-party. Locally: npm run server.
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
-import { checkPassword, endSession, hashPassword, MIN_PASSWORD_LENGTH, normalizeEmail, SESSION_DAYS, startSession, userOfSession } from "./auth.ts";
+import {
+  checkPassword,
+  clearFailures,
+  endSession,
+  hashPassword,
+  isBlocked,
+  MIN_PASSWORD_LENGTH,
+  normalizeEmail,
+  recordFailure,
+  SESSION_DAYS,
+  startSession,
+  userOfSession,
+} from "./auth.ts";
+import { all, one, run } from "./db.ts";
 import type { Db } from "./db.ts";
 import { parseSettings } from "../src/settings/settingsStore.ts";
 import { parsePracticeSession, PRACTICE_PAGES } from "../src/stats/practice.ts";
 import type { PracticeSummary } from "../src/stats/practice.ts";
 
 export const COOKIE = "sonora_session";
+
 // A hash to compare against when the email is unknown, so both cases take as long.
-const DUMMY_HASH = await hashPassword("not a real password");
+let dummyHash: Promise<string> | null = null;
+const getDummyHash = () => (dummyHash ??= hashPassword("not a real password"));
 
 type Options = { secureCookie: boolean; loginLimit?: number };
 
 export function createApp(db: Db, { secureCookie, loginLimit = 10 }: Options) {
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", 1); // behind Render's and Vercel's proxies
+  app.set("trust proxy", 1); // behind Vercel's proxy
   app.use(express.json({ limit: "16kb" }));
 
   // State-changing requests must be JSON: a plain HTML form from another site
@@ -39,26 +55,17 @@ export function createApp(db: Db, { secureCookie, loginLimit = 10 }: Options) {
     });
   const tokenOf = (req: Request) => cookieValue(req.headers.cookie, COOKIE);
 
-  // Too many wrong passwords for one email from one address: wait a quarter of an
-  // hour. The email is part of the key because behind Vercel's rewrite many
-  // users may share one address.
-  const failures = new Map<string, { count: number; until: number }>();
-  const blocked = (ip: string) => (failures.get(ip)?.until ?? 0) > Date.now();
-  const failed = (ip: string) => {
-    const entry = failures.get(ip) ?? { count: 0, until: 0 };
-    entry.count++;
-    if (entry.count >= loginLimit) Object.assign(entry, { count: 0, until: Date.now() + 15 * 60_000 });
-    failures.set(ip, entry);
-  };
-
-  const requireUser = (req: Request, res: Response, next: NextFunction) => {
-    const userId = userOfSession(db, tokenOf(req));
+  const requireUser = async (req: Request, res: Response, next: NextFunction) => {
+    const userId = await userOfSession(db, tokenOf(req));
     if (userId === null) return void res.status(401).json({ error: "Log in first." });
     res.locals.userId = userId;
     next();
   };
 
-  app.get("/api/health", (_req, res) => void res.json({ ok: true }));
+  app.get("/api/health", async (_req, res) => {
+    await db.execute("SELECT 1"); // also checks the database connection
+    res.json({ ok: true });
+  });
 
   app.post("/api/auth/register", async (req, res) => {
     const email = normalizeEmail(req.body?.email);
@@ -67,79 +74,81 @@ export function createApp(db: Db, { secureCookie, loginLimit = 10 }: Options) {
     if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH || password.length > 200) {
       return void res.status(400).json({ error: `The password needs at least ${MIN_PASSWORD_LENGTH} characters.` });
     }
-    const exists = db.prepare("SELECT 1 FROM users WHERE email = ?").get(email);
-    if (exists) return void res.status(409).json({ error: "This email is already registered." });
+    if (await one(db, "SELECT 1 FROM users WHERE email = ?", email)) {
+      return void res.status(409).json({ error: "This email is already registered." });
+    }
     const hash = await hashPassword(password);
-    const { lastInsertRowid } = db
-      .prepare("INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)")
-      .run(email, hash, Date.now());
-    setCookie(res, startSession(db, Number(lastInsertRowid)));
+    const { lastInsertRowid } = await run(db, "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)", email, hash, Date.now());
+    setCookie(res, await startSession(db, Number(lastInsertRowid)));
     res.status(201).json({ email });
   });
 
   app.post("/api/auth/login", async (req, res) => {
-    const ip = `${req.ip ?? "?"}|${normalizeEmail(req.body?.email) ?? ""}`;
-    if (blocked(ip)) return void res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
     const email = normalizeEmail(req.body?.email);
+    // The email is part of the key: behind a proxy many users may share one address.
+    const key = `${req.ip ?? "?"}|${email ?? ""}`;
+    if (await isBlocked(db, key)) return void res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     const user = email
-      ? (db.prepare("SELECT id, password_hash FROM users WHERE email = ?").get(email) as
-          | { id: number; password_hash: string }
-          | undefined)
+      ? await one<{ id: number; password_hash: string }>(db, "SELECT id, password_hash FROM users WHERE email = ?", email)
       : undefined;
-    const ok = await checkPassword(password, user?.password_hash ?? DUMMY_HASH);
+    const ok = await checkPassword(password, user?.password_hash ?? (await getDummyHash()));
     if (!user || !ok) {
-      failed(ip);
+      await recordFailure(db, key, loginLimit);
       return void res.status(401).json({ error: "Wrong email or password." });
     }
-    failures.delete(ip);
-    setCookie(res, startSession(db, user.id));
+    await clearFailures(db, key);
+    setCookie(res, await startSession(db, Number(user.id)));
     res.json({ email });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
     const token = tokenOf(req);
-    if (token) endSession(db, token);
+    if (token) await endSession(db, token);
     res.clearCookie(COOKIE, { path: "/api" });
     res.json({ ok: true });
   });
 
   // Signed out is a normal answer here (email null), not an error.
-  app.get("/api/me", (req, res) => {
-    const userId = userOfSession(db, tokenOf(req));
-    const user = userId === null ? undefined : (db.prepare("SELECT email FROM users WHERE id = ?").get(userId) as { email: string });
+  app.get("/api/me", async (req, res) => {
+    const userId = await userOfSession(db, tokenOf(req));
+    const user = userId === null ? undefined : await one<{ email: string }>(db, "SELECT email FROM users WHERE id = ?", userId);
     res.json({ email: user?.email ?? null });
   });
 
-  app.get("/api/settings", requireUser, (_req, res) => {
-    const row = db.prepare("SELECT json FROM settings WHERE user_id = ?").get(res.locals.userId) as
-      | { json: string }
-      | undefined;
+  app.get("/api/settings", requireUser, async (_req, res) => {
+    const row = await one<{ json: string }>(db, "SELECT json FROM settings WHERE user_id = ?", res.locals.userId);
     // null = nothing saved yet: the client keeps what it has and uploads it.
     res.json({ settings: row ? parseSettings(JSON.parse(row.json)) : null });
   });
 
-  app.put("/api/settings", requireUser, (req, res) => {
+  app.put("/api/settings", requireUser, async (req, res) => {
     const settings = parseSettings(req.body?.settings);
-    db.prepare(
+    await run(
+      db,
       "INSERT INTO settings (user_id, json, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at",
-    ).run(res.locals.userId, JSON.stringify(settings), Date.now());
+      res.locals.userId,
+      JSON.stringify(settings),
+      Date.now(),
+    );
     res.json({ settings });
   });
 
-  app.post("/api/stats/sessions", requireUser, (req, res) => {
+  app.post("/api/stats/sessions", requireUser, async (req, res) => {
     const s = parsePracticeSession(req.body);
     if (!s) return void res.status(400).json({ error: "Not a valid practice session." });
-    db.prepare(
+    await run(
+      db,
       `INSERT INTO practice_sessions (user_id, page, started_at, seconds, notes_heard, notes_in_tune, sum_abs_cents, chords_shown, engine)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(res.locals.userId, s.page, s.startedAt, s.seconds, s.notesHeard, s.notesInTune, s.sumAbsCents, s.chordsShown, s.engine);
+      res.locals.userId, s.page, s.startedAt, s.seconds, s.notesHeard, s.notesInTune, s.sumAbsCents, s.chordsShown, s.engine,
+    );
     res.status(201).json({ ok: true });
   });
 
-  app.get("/api/stats/summary", requireUser, (req, res) => {
+  app.get("/api/stats/summary", requireUser, async (req, res) => {
     const days = Math.min(365, Math.max(1, Number.parseInt(String(req.query.days ?? "7"), 10) || 7));
-    res.json(summarize(db, res.locals.userId, days));
+    res.json(await summarize(db, res.locals.userId, days));
   });
 
   app.use("/api", (_req, res) => void res.status(404).json({ error: "Not found." }));
@@ -152,12 +161,10 @@ export function createApp(db: Db, { secureCookie, loginLimit = 10 }: Options) {
   return app;
 }
 
-export function summarize(db: Db, userId: number, days: number, now = Date.now()): PracticeSummary {
+export async function summarize(db: Db, userId: number, days: number, now = Date.now()): Promise<PracticeSummary> {
   const dayMs = 86_400_000;
   const firstDay = Math.floor(now / dayMs) - days + 1; // UTC days
-  const rows = db
-    .prepare("SELECT * FROM practice_sessions WHERE user_id = ? AND started_at >= ? ORDER BY started_at")
-    .all(userId, firstDay * dayMs) as {
+  const rows = await all<{
     page: (typeof PRACTICE_PAGES)[number];
     started_at: number;
     seconds: number;
@@ -166,7 +173,7 @@ export function summarize(db: Db, userId: number, days: number, now = Date.now()
     sum_abs_cents: number;
     chords_shown: number;
     engine: "dsp" | "ai" | null;
-  }[];
+  }>(db, "SELECT * FROM practice_sessions WHERE user_id = ? AND started_at >= ? ORDER BY started_at", userId, firstDay * dayMs);
 
   const minutes = { tuner: 0, notes: 0, chords: 0 };
   const perDay = Array.from({ length: days }, (_, i) => ({
@@ -176,13 +183,14 @@ export function summarize(db: Db, userId: number, days: number, now = Date.now()
   let notesHeard = 0, notesInTune = 0, sumAbsCents = 0;
   const chordsShown = { dsp: 0, ai: 0 };
   for (const r of rows) {
-    minutes[r.page] += r.seconds / 60;
-    const day = perDay[Math.floor(r.started_at / dayMs) - firstDay];
-    if (day) day.minutes += r.seconds / 60;
-    notesHeard += r.notes_heard;
-    notesInTune += r.notes_in_tune;
-    sumAbsCents += r.sum_abs_cents;
-    if (r.engine) chordsShown[r.engine] += r.chords_shown;
+    const seconds = Number(r.seconds);
+    minutes[r.page] += seconds / 60;
+    const day = perDay[Math.floor(Number(r.started_at) / dayMs) - firstDay];
+    if (day) day.minutes += seconds / 60;
+    notesHeard += Number(r.notes_heard);
+    notesInTune += Number(r.notes_in_tune);
+    sumAbsCents += Number(r.sum_abs_cents);
+    if (r.engine) chordsShown[r.engine] += Number(r.chords_shown);
   }
   const round = (x: number) => Math.round(x * 10) / 10;
   return {

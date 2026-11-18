@@ -1,28 +1,44 @@
 import { after, before, test } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { createApp, summarize } from "../server/app.ts";
 import { checkPassword, hashPassword, startSession, userOfSession } from "../server/auth.ts";
-import { openDb } from "../server/db.ts";
+import { databaseConfig } from "../server/config.ts";
+import { one, openDb, run } from "../server/db.ts";
+import type { Db } from "../server/db.ts";
 import { DEFAULT_SETTINGS } from "../src/settings/settingsStore.ts";
 import { parsePracticeSession } from "../src/stats/practice.ts";
 
-const db = openDb(":memory:");
+// A real file database, like local development (libSQL file: URL).
+const folder = mkdtempSync(join(tmpdir(), "sonora-api-"));
+let db: Db;
 let server: Server;
 let base = "";
 
 before(async () => {
+  db = await openDb(`file:${join(folder, "test.db").replaceAll("\\", "/")}`);
   server = createApp(db, { secureCookie: false, loginLimit: 3 }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
-after(() => server.close());
+after(() => {
+  server.close();
+  db.close();
+  try {
+    rmSync(folder, { recursive: true, force: true });
+  } catch {
+    // Windows may still hold the file for a moment; it is only a temp folder.
+  }
+});
 
 // A tiny client that keeps the session cookie, like a browser.
 function client() {
   let cookie = "";
-  return async (method: string, path: string, body?: unknown) => {
+  const call = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(base + path, {
       method,
       headers: { ...(body ? { "content-type": "application/json" } : {}), ...(cookie ? { cookie } : {}) },
@@ -32,6 +48,7 @@ function client() {
     if (set) cookie = set.split(";")[0].endsWith("=") ? "" : set.split(";")[0];
     return { status: res.status, body: await res.json(), setCookie: set };
   };
+  return Object.assign(call, { cookie: () => cookie });
 }
 
 test("passwords: scrypt with salt, never stored as text", async () => {
@@ -43,14 +60,29 @@ test("passwords: scrypt with salt, never stored as text", async () => {
   assert.ok(!(await checkPassword("guitar124", a)));
 });
 
-test("sessions expire and only their hash is stored", () => {
-  const { lastInsertRowid } = db
-    .prepare("INSERT INTO users (email, password_hash, created_at) VALUES ('x@y.zz', 'h', 0)")
-    .run();
-  const token = startSession(db, Number(lastInsertRowid), 0);
-  assert.equal(db.prepare("SELECT 1 FROM auth_sessions WHERE token_hash = ?").get(token), undefined);
-  assert.equal(userOfSession(db, token, 1000), Number(lastInsertRowid));
-  assert.equal(userOfSession(db, token, 31 * 86_400_000), null, "expired after 30 days");
+test("sessions live in the database, expire, and only their hash is stored", async () => {
+  const { lastInsertRowid } = await run(db, "INSERT INTO users (email, password_hash, created_at) VALUES ('x@y.zz', 'h', 0)");
+  const token = await startSession(db, Number(lastInsertRowid), 0);
+  assert.equal(await one(db, "SELECT 1 FROM auth_sessions WHERE token_hash = ?", token), undefined);
+  assert.equal(await userOfSession(db, token, 1000), Number(lastInsertRowid));
+  assert.equal(await userOfSession(db, token, 31 * 86_400_000), null, "expired after 30 days");
+});
+
+test("a second app on the same database (another serverless instance) knows the session", async () => {
+  const call = client();
+  await call("POST", "/api/auth/register", { email: "twice@test.cz", password: "guitar123" });
+  const cookie = call.cookie();
+  const other = createApp(db, { secureCookie: false }).listen(0);
+  await new Promise((resolve) => other.once("listening", resolve));
+  const res = await fetch(`http://127.0.0.1:${(other.address() as AddressInfo).port}/api/me`, { headers: { cookie } });
+  other.close();
+  assert.deepEqual(await res.json(), { email: "twice@test.cz" });
+});
+
+test("the database comes from Turso variables, a local file otherwise", () => {
+  assert.deepEqual(databaseConfig({ TURSO_DATABASE_URL: "libsql://x.turso.io", TURSO_AUTH_TOKEN: "t" }), { url: "libsql://x.turso.io", authToken: "t" });
+  assert.deepEqual(databaseConfig({}), { url: "file:server/data/sonora.db" });
+  assert.throws(() => databaseConfig({ VERCEL: "1" }), /TURSO_DATABASE_URL/);
 });
 
 test("register → me → logout; the cookie is httpOnly and SameSite=Lax", async () => {
@@ -141,8 +173,8 @@ test("parsePracticeSession keeps only plausible values", () => {
   assert.equal(parsePracticeSession({ ...ok, engine: "gpu" }, now), null);
 });
 
-test("summary of a user with no sessions", () => {
-  const s = summarize(db, 9999, 3);
+test("summary of a user with no sessions", async () => {
+  const s = await summarize(db, 9999, 3);
   assert.equal(s.sessions, 0);
   assert.equal(s.inTuneShare, null);
   assert.equal(s.minutesPerDay.length, 3);

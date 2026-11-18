@@ -1,5 +1,5 @@
-// Calls to the Sonora API. It lives under /api on the same origin (Vercel
-// rewrites it to the server; `npm run dev` proxies it), so the cookie just works.
+// Calls to the Sonora API. It lives under /api on the same origin (a Vercel
+// Function in the same project; `npm run dev` proxies it), so the cookie just works.
 
 export class ApiError extends Error {
   readonly status: number;

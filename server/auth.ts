@@ -1,13 +1,16 @@
 // Passwords (scrypt) and login sessions (random token in an httpOnly cookie;
 // only its SHA-256 is stored, so a leaked database does not log anyone in).
+// Everything lives in the database: a serverless function keeps no memory.
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+import { one, run } from "./db.ts";
 import type { Db } from "./db.ts";
 
 const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, length: number) => Promise<Buffer>;
 const KEY_LENGTH = 64;
 export const SESSION_DAYS = 30;
 export const MIN_PASSWORD_LENGTH = 8;
+const BLOCK_MS = 15 * 60_000;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
@@ -25,31 +28,50 @@ export async function checkPassword(password: string, stored: string): Promise<b
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export function startSession(db: Db, userId: number, now = Date.now()): string {
+export async function startSession(db: Db, userId: number, now = Date.now()): Promise<string> {
   const token = randomBytes(32).toString("base64url");
-  db.prepare("INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)").run(
-    hashToken(token),
-    userId,
-    now + SESSION_DAYS * 86_400_000,
-  );
+  await run(db, "INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)", hashToken(token), userId, now + SESSION_DAYS * 86_400_000);
   return token;
 }
 
-export function userOfSession(db: Db, token: string | undefined, now = Date.now()): number | null {
+export async function userOfSession(db: Db, token: string | undefined, now = Date.now()): Promise<number | null> {
   if (!token) return null;
-  const row = db.prepare("SELECT user_id, expires_at FROM auth_sessions WHERE token_hash = ?").get(hashToken(token)) as
-    | { user_id: number; expires_at: number }
-    | undefined;
+  const row = await one<{ user_id: number; expires_at: number }>(
+    db,
+    "SELECT user_id, expires_at FROM auth_sessions WHERE token_hash = ?",
+    hashToken(token),
+  );
   if (!row) return null;
-  if (row.expires_at < now) {
-    endSession(db, token);
+  if (Number(row.expires_at) < now) {
+    await endSession(db, token);
     return null;
   }
-  return row.user_id;
+  return Number(row.user_id);
 }
 
-export function endSession(db: Db, token: string): void {
-  db.prepare("DELETE FROM auth_sessions WHERE token_hash = ?").run(hashToken(token));
+export async function endSession(db: Db, token: string): Promise<void> {
+  await run(db, "DELETE FROM auth_sessions WHERE token_hash = ?", hashToken(token));
+}
+
+// ---------- Wrong passwords: after `limit` in a row, wait 15 minutes ----------
+
+export async function isBlocked(db: Db, key: string, now = Date.now()): Promise<boolean> {
+  const row = await one<{ blocked_until: number }>(db, "SELECT blocked_until FROM login_failures WHERE key = ?", key);
+  return Number(row?.blocked_until ?? 0) > now;
+}
+
+export async function recordFailure(db: Db, key: string, limit: number, now = Date.now()): Promise<void> {
+  await run(
+    db,
+    `INSERT INTO login_failures (key, count, blocked_until) VALUES (?, 1, 0)
+     ON CONFLICT(key) DO UPDATE SET count = count + 1`,
+    key,
+  );
+  await run(db, "UPDATE login_failures SET count = 0, blocked_until = ? WHERE key = ? AND count >= ?", now + BLOCK_MS, key, limit);
+}
+
+export async function clearFailures(db: Db, key: string): Promise<void> {
+  await run(db, "DELETE FROM login_failures WHERE key = ?", key);
 }
 
 export function normalizeEmail(raw: unknown): string | null {
