@@ -53,7 +53,9 @@ export default function App() {
         </span>
         <span className="footer-version">
           <span className="status-dot" /> Sonora{" "}
-          <span className="version">v0.1</span>
+          <span className="version" title={`Build ${__SONORA_COMMIT__}`}>
+            v0.1 · {__SONORA_COMMIT__}
+          </span>
         </span>
       </footer>
     </>
