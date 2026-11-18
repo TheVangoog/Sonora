@@ -9,6 +9,7 @@
     "allowJs": true,
     "checkJs": false,
     "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "noEmit": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
