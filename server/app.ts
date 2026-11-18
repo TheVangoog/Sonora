@@ -39,7 +39,9 @@ export function createApp(db: Db, { secureCookie, loginLimit = 10 }: Options) {
     });
   const tokenOf = (req: Request) => cookieValue(req.headers.cookie, COOKIE);
 
-  // Too many wrong passwords from one address: wait a quarter of an hour.
+  // Too many wrong passwords for one email from one address: wait a quarter of an
+  // hour. The email is part of the key because behind Vercel's rewrite many
+  // users may share one address.
   const failures = new Map<string, { count: number; until: number }>();
   const blocked = (ip: string) => (failures.get(ip)?.until ?? 0) > Date.now();
   const failed = (ip: string) => {
@@ -76,7 +78,7 @@ export function createApp(db: Db, { secureCookie, loginLimit = 10 }: Options) {
   });
 
   app.post("/api/auth/login", async (req, res) => {
-    const ip = req.ip ?? "?";
+    const ip = `${req.ip ?? "?"}|${normalizeEmail(req.body?.email) ?? ""}`;
     if (blocked(ip)) return void res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
     const email = normalizeEmail(req.body?.email);
     const password = typeof req.body?.password === "string" ? req.body.password : "";
@@ -102,9 +104,11 @@ export function createApp(db: Db, { secureCookie, loginLimit = 10 }: Options) {
     res.json({ ok: true });
   });
 
-  app.get("/api/me", requireUser, (_req, res) => {
-    const user = db.prepare("SELECT email FROM users WHERE id = ?").get(res.locals.userId) as { email: string };
-    res.json({ email: user.email });
+  // Signed out is a normal answer here (email null), not an error.
+  app.get("/api/me", (req, res) => {
+    const userId = userOfSession(db, tokenOf(req));
+    const user = userId === null ? undefined : (db.prepare("SELECT email FROM users WHERE id = ?").get(userId) as { email: string });
+    res.json({ email: user?.email ?? null });
   });
 
   app.get("/api/settings", requireUser, (_req, res) => {

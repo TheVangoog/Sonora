@@ -5,6 +5,7 @@ import AudioStatusBadge from "./AudioStatusBadge.tsx";
 import AudioSourceControls from "./AudioSourceControls.tsx";
 import ChordDisplay from "./ChordDisplay.tsx";
 import { useAudioInput } from "../hooks/useAudioInput.ts";
+import { usePracticeTracking } from "../stats/usePracticeTracking.ts";
 import { useChordDetection } from "../hooks/useChordDetection.ts";
 import { useAiEngine } from "../hooks/useAiEngine.ts";
 import type { AiStatus } from "../hooks/useAiEngine.ts";
@@ -35,6 +36,14 @@ export default function ChordWorkspace() {
     allChords ? "extended" : "basic",
     ai.fail,
   );
+  // Practice statistics (only when signed in, only from the microphone).
+  const practice = usePracticeTracking(
+    "chords",
+    audio.status === "running" && audio.mode === "microphone",
+    ai.engine ? "ai" : "dsp",
+  );
+  const shownName = chordState.shownChord?.name ?? null;
+  useEffect(() => practice.showChord(shownName), [practice, shownName]);
 
   const [demoChord, setDemoChord] = useState("Am");
   const [demoLevel, setDemoLevel] = useState(0.3);

@@ -62,7 +62,7 @@ test("register → me → logout; the cookie is httpOnly and SameSite=Lax", asyn
   assert.match(reg.setCookie!, /SameSite=Lax/);
   assert.deepEqual((await call("GET", "/api/me")).body, { email: "ivan@example.com" });
   await call("POST", "/api/auth/logout", {});
-  assert.equal((await call("GET", "/api/me")).status, 401);
+  assert.deepEqual((await call("GET", "/api/me")).body, { email: null });
 });
 
 test("registration refuses bad input and a taken email", async () => {

@@ -9,6 +9,7 @@ const titles = {
   "/notes": "Note finder",
   "/chords": "Chord recognizer",
   "/record": "Dataset recording",
+  "/account": "Account",
 };
 
 export default function App() {

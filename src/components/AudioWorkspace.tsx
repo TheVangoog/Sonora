@@ -11,16 +11,20 @@ import type { FrameSource } from "../audio/AudioInput.ts";
 import type { LatencySummary } from "../audio/latency.ts";
 import { tunerFrameSize } from "../audio/pitch.ts";
 import type { PitchReading } from "../audio/pitch.ts";
+import { frequencyToNote } from "../audio/notes.ts";
+import { usePracticeTracking } from "../stats/usePracticeTracking.ts";
 
 // Workspace for a single tone (tuner and note finder).
 type Props = {
   title: string;
+  practicePage: "tuner" | "notes";
   icon?: string;
   children: (pitch: PitchReading) => ReactNode;
 };
 
 export default function AudioWorkspace({
   title,
+  practicePage,
   icon = "tune",
   children,
 }: Props) {
@@ -33,6 +37,13 @@ export default function AudioWorkspace({
     source,
     audio.subscribeFrames,
   );
+
+  // Practice statistics (only when signed in, only from the microphone).
+  const practice = usePracticeTracking(practicePage, audio.status === "running" && audio.mode === "microphone");
+  useEffect(() => {
+    const note = pitch.status === "detected" ? frequencyToNote(pitch.frequency, settings.referenceHz) : null;
+    practice.hearNote(note ? note.name + note.octave : null, note?.cents ?? 0);
+  }, [pitch, practice, settings.referenceHz]);
 
   return (
     <section className="audio-workspace" aria-label={title}>

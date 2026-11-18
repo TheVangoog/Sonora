@@ -1263,3 +1263,66 @@ main {
 .app-footer a {
   color: inherit;
 }
+
+/* Account page */
+.account-panel {
+  max-width: 640px;
+  padding: 24px;
+}
+.account-form {
+  display: grid;
+  gap: 14px;
+}
+.account-form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+.account-form small {
+  color: var(--muted);
+  font-weight: 450;
+}
+.account-form input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.account-form input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.account-signed-in {
+  display: grid;
+  gap: 16px;
+}
+.practice-days {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 120px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.practice-days li {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  gap: 4px;
+  min-width: 0;
+}
+.practice-bar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--blue);
+}
+.practice-days small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
