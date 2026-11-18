@@ -52,17 +52,26 @@ so the chord decision is shared and the two can be compared fairly.
 
 ## Accuracy
 
-Measured on [GuitarSet](https://zenodo.org/records/3371780) (real guitar recordings, CC BY 4.0) and on my own recordings:
+Independent test on [GuitarSet](https://zenodo.org/records/3371780) (real guitar recordings, CC BY 4.0).
+The data are split **by player before segmenting**: thresholds were chosen only on players 00–03 (dev),
+frozen in [`scripts/chord-eval.config.json`](scripts/chord-eval.config.json), and then run **once** on players 04–05 (test).
+Commit `044bb4d`, Basic Pitch 1.0.1; full report: [`docs/results/eval-test-2026-11-18.md`](docs/results/eval-test-2026-11-18.md).
 
-| | Algorithm | AI (Basic Pitch) |
-|---|---|---|
-| GuitarSet, all chord types (762 chords) | 57 % | **78 %** |
-| — major 7th / minor 7th / dominant 7th | 22 % / 16 % / 31 % | **69 % / 54 % / 51 %** |
-| My own recordings, major/minor (51 takes) | 82 % | **90 %** |
-| Time until a chord appears | ~0.2 s | ~1.5–2 s (one analysis ≈ 110 ms on WebGL) |
+| GuitarSet test (players 04–05) | vocabulary | Algorithm (DSP) | AI (Basic Pitch) |
+|---|---|---|---|
+| file correct ¹ | basic (24 major/minor), 236 files | 60.2 % | 64.0 % |
+| file correct ¹ | extended (108 chords), 245 files | 49.0 % | **76.7 %** |
+| windows correct | basic | 24.8 % | 64.0 % |
+| windows with an answer | basic | 32.8 % | 71.2 % |
+| windows with a wrong chord | basic | 8.0 % | 7.2 % |
 
-Settings were chosen on GuitarSet and only checked on the other sets.
-Full reports: [`docs/results/`](docs/results).
+¹ *file correct* = the most frequent chord **among the windows with an answer** is the played chord; windows without an answer are not counted.
+Windows: first 0.3 s skipped, DSP window 8192 samples, AI window ≈ 2 s. Per-class counts and accuracy are in the report.
+
+Extra check on 51 own recordings (same frozen configuration, not used for tuning): DSP 82.4 % files correct, AI 94.1 % (basic) / 92.2 % (extended).
+
+Speed (synthetic test chord, Chromium 156 / Firefox 160 on a Windows laptop, median of 5): DSP shows a new chord after ~0.3 s; AI after ~2–4 s.
+Earlier numbers in this README (57 % / 78 %) were measured on the same data the settings were tuned on and are no longer used.
 
 ## Run locally
 
