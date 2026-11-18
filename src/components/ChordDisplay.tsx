@@ -47,7 +47,7 @@ export default function ChordDisplay(state: ChordState) {
       <ChromaBars chroma={reading.chroma} chordTones={chordTones} />
 
       <div className="chord-candidates" aria-label="Closest chords">
-        {reading.candidates.map(({ template, score }) => (
+        {(view.kind === "note" ? [] : reading.candidates).map(({ template, score }) => (
           <div key={template.name} className="chord-candidate">
             <span>{template.name}</span>
             <i>

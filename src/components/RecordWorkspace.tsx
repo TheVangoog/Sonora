@@ -7,6 +7,9 @@ import type { DecodedAudio } from "../audio/wav.ts";
 import { measureSignal } from "../audio/signal.ts";
 import { CHORD_LABELS, NO_CHORD_LABELS } from "../audio/datasetLabels.ts";
 import { ChordDetector, CHORD_FRAME_SIZE } from "../audio/chords.ts";
+import { singleNoteOf } from "../audio/liveChordTracker.ts";
+import { ToneDetector, tunerFrameSize } from "../audio/pitch.ts";
+import { frequencyToNote } from "../audio/notes.ts";
 
 // Labelled WAV takes for the test bench (npm run eval).
 const TAKE_SECONDS = 3;
@@ -175,13 +178,18 @@ function TakeReview({
     const frame = take.samples.slice(start, start + CHORD_FRAME_SIZE);
     if (frame.length < CHORD_FRAME_SIZE) return setHeard("take too short");
     const reading = new ChordDetector(CHORD_FRAME_SIZE).analyze(frame, take.sampleRate);
+    const tone = new ToneDetector().analyze(frame.subarray(frame.length - tunerFrameSize(take.sampleRate)), take.sampleRate);
+    const oneNote = singleNoteOf(reading, tone);
+    const note = oneNote ? frequencyToNote(oneNote) : null;
     const best = reading.candidates[0];
     setHeard(
       reading.status === "detected"
         ? `${reading.chord.name} (${Math.round(reading.confidence * 100)}%)`
-        : best
-          ? `not sure, closest ${best.template.name}`
-          : "nothing (quiet)",
+        : note
+          ? `one note (${note.name}${note.octave}), not a chord`
+          : best
+            ? `not sure, closest ${best.template.name}`
+            : "nothing (quiet)",
     );
   }, [take]);
 
