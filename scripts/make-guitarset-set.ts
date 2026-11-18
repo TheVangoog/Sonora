@@ -9,9 +9,13 @@
 //   annotation.zip      → annotation/*.jams
 //   audio_mono-mic.zip  → audio/*_mic.wav
 //
-// Run: npm run make:guitarset      Then: npm run eval:guitarset
-//      npm run make:guitarset-ext  Then: npm run eval:guitarset-ext
-//      (--extended: also seventh, dim / m7♭5 / aug and power chords)
+// Run: npm run make:guitarset      (major/minor labels)
+//      npm run make:guitarset-ext  (extended labels: also seventh, dim / m7♭5 / aug and power chords)
+//      Then: npm run tune:dev (dev part only), npm run eval:test (test part, once)
+//
+// Both sets are cut from the same recordings and every file name keeps the
+// recording title, so the player split in scripts/chord-eval.config.json puts
+// a recording and all its segments into the same part in both sets.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { decodeWav, encodeWav } from "../src/audio/wav.ts";
 import { harteToChord, harteToTriad } from "./guitarsetLabels.ts";

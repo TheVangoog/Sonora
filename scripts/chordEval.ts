@@ -192,7 +192,8 @@ export function metricsRow(m: Metrics): string {
     m.windows,
     `${m.windowsCorrect} (${percent(m.windowsCorrect, m.windows)})`,
     `${m.windowsAnswered} (${percent(m.windowsAnswered, m.windows)})`,
-    percent(m.windowsCorrect, m.windowsAnswered),
+    // Silent windows of none-* takes are correct but not answered, so count only named chords.
+    percent(m.windowsAnswered - m.windowsWrongChord - m.windowsFalseAlarm, m.windowsAnswered),
     `${m.windowsWrongChord} (${percent(m.windowsWrongChord, m.windows)})`,
     `${m.windowsFalseAlarm} / ${m.filesFalseAlarm}`,
     "",

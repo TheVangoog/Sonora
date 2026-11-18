@@ -111,7 +111,8 @@ const inputs = RUNS.filter((r, i) => RUNS.findIndex((o) => o.folder === r.folder
 const text = [
   `# Chord recognition on the test part (${date})`,
   "",
-  "One run with the configuration frozen on the dev part (`docs/results/tune-dev-2026-11-18.md`). Nothing below was used to choose any value.",
+  "One run with the configuration frozen on the dev part (`docs/results/tune-dev-2026-11-18.md`). Nothing below was used to choose any value. " +
+    "(Regenerated once after fixing the formula of the column *correct of answered*, which counted the silent windows of none-* takes; the run is deterministic and no value changed.)",
   "",
   "## Run",
   "",
