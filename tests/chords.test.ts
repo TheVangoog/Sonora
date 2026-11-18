@@ -245,6 +245,35 @@ test("level gate stays open for continuous playing without pauses", async () => 
   assert.equal(open, 100);
 });
 
+// Supervisor's case (16. 11. 2026): 1 s of silence at −65 dBFS, then a steady
+// quiet tone at −42 dBFS. Before the fix the silence left the history after
+// 80 frames, the room rose to −45 dBFS and the gate closed on the tone.
+test("level gate does not learn a long quiet tone as the room", async () => {
+  const { LevelGate } = await import("../src/audio/levelGate.ts");
+  const gate = new LevelGate();
+  for (let i = 0; i < 10; i++) gate.isAboveRoom(-65);
+  let closedAt = -1;
+  for (let i = 0; i < 200; i++) {
+    if (!gate.isAboveRoom(-42) && closedAt < 0) closedAt = i;
+  }
+  assert.equal(closedAt, -1, `the gate closed on the tone at frame ${closedAt}`);
+  assert.equal(gate.roomLevel(), -65, "the room is still the silence");
+  // After the tone the room is still known, so silence closes the gate at once.
+  assert.equal(gate.isAboveRoom(-64), false);
+});
+
+test("level gate relearns the room when a steady new background stays for long", async () => {
+  const { LevelGate, STEADY_FRAMES } = await import("../src/audio/levelGate.ts");
+  const gate = new LevelGate();
+  for (let i = 0; i < 10; i++) gate.isAboveRoom(-65);
+  // A fan starts at −50 dBFS and keeps going, ±0.5 dB.
+  const fan = (i: number) => -50 + 0.5 * Math.sin(i);
+  for (let i = 0; i < STEADY_FRAMES - 1; i++) assert.equal(gate.isAboveRoom(fan(i)), true);
+  assert.equal(gate.isAboveRoom(fan(STEADY_FRAMES)), false, "after 30 s the fan is the room");
+  assert.ok(gate.roomLevel() > -51 && gate.roomLevel() < -49);
+  assert.equal(gate.isAboveRoom(-35), true, "playing above the fan still opens it");
+});
+
 // Basic Pitch: how the activation floor turns the network's output into chroma.
 // Row index = MIDI − 21, so A3 (MIDI 57) is row 36, C4 = 39, E4 = 43.
 test("Basic Pitch floor: notes above it count, notes below it are ignored", () => {
