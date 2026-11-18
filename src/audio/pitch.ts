@@ -11,6 +11,8 @@ export const YIN_THRESHOLD = 0.15;
 // Clarity = 1 − d'(τ). A dip found only as the global minimum is still accepted
 // down to this value, because a real guitar through a laptop microphone is not a clean sine.
 export const MIN_CLARITY = 0.8;
+// The tuner analyses one frame every 75 ms (~13 per second) on both frame paths.
+export const ANALYSIS_HOP_MS = 75;
 
 // Longest searched period (lowest frequency) in samples.
 function maxLagFor(sampleRate: number): number {

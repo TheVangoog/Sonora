@@ -17,7 +17,7 @@ No server, no sign-up, and the sound never leaves your device.
 
 ## Features
 
-- **Tuner** — YIN pitch detection, chromatic or guitar mode (standard tuning, auto or manual string), A₄ reference 432–442 Hz, a smooth needle in cents.
+- **Tuner** — YIN pitch detection, chromatic or guitar mode (standard tuning, auto or manual string), A₄ reference 432–442 Hz, a smooth needle in cents. Frames come from an AnalyserNode or an AudioWorklet (switchable, with live frame-to-screen latency; see `docs/results/latency-2026-11-18.md`).
 - **Note finder** — shows the note and octave on a piano keyboard.
 - **Chord recognizer** — 108 chords: major, minor, 7, maj7, m7, dim, m7♭5, aug and power chords.
 - **Two engines, one switch:**

@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioInput, idleState } from "../audio/AudioInput.ts";
-import type { AudioMode, FrameSize } from "../audio/AudioInput.ts";
+import type { AudioMode, FrameSize, FrameSource, PushedFrame } from "../audio/AudioInput.ts";
 import { FRAME_SIZE } from "../audio/signal.ts";
 
 // frameSize: how many samples readFrame() returns (see FrameSize). Chords 8192.
 // historySeconds: how many seconds of continuous sound to keep for the AI (0 = none).
-export function useAudioInput(frameSize: FrameSize = FRAME_SIZE, historySeconds = 0) {
+// frameSource: "analyser" (polled) or "worklet" (pushed frames, see subscribeFrames).
+export function useAudioInput(
+  frameSize: FrameSize = FRAME_SIZE,
+  historySeconds = 0,
+  frameSource: FrameSource = "analyser",
+) {
   const input = useRef<AudioInput | null>(null);
   const [state, setState] = useState(idleState);
   const [frequency, setFrequency] = useState(440);
@@ -19,6 +24,10 @@ export function useAudioInput(frameSize: FrameSize = FRAME_SIZE, historySeconds 
       input.current = null;
     };
   }, [frameSize, historySeconds]);
+
+  useEffect(() => {
+    input.current?.setFrameSource(frameSource);
+  }, [frameSource, frameSize, historySeconds]);
 
   useEffect(() => {
     input.current?.setDemo(frequency, amplitude);
@@ -36,6 +45,11 @@ export function useAudioInput(frameSize: FrameSize = FRAME_SIZE, historySeconds 
     (seconds: number) => input.current?.readHistory(seconds) ?? null,
     [],
   );
+  const subscribeFrames = useCallback(
+    (listener: (frame: PushedFrame) => void) =>
+      input.current?.subscribeFrames(listener) ?? (() => {}),
+    [],
+  );
   const setDemoTones = useCallback(
     (frequencies: number[], level: number) => {
       input.current?.setDemoTones(frequencies, level);
@@ -50,6 +64,8 @@ export function useAudioInput(frameSize: FrameSize = FRAME_SIZE, historySeconds 
     stop,
     readFrame,
     readHistory,
+    subscribeFrames,
+    frameSource,
     frequency,
     setFrequency,
     amplitude,

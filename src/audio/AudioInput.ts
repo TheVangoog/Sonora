@@ -1,7 +1,18 @@
 import { audioErrorMessage, FRAME_SIZE } from "./signal.ts";
 import { HISTORY_WORKLET, SoundHistory } from "./soundHistory.ts";
+import { FRAME_WORKLET } from "./frameRing.ts";
+import { ANALYSIS_HOP_MS } from "./pitch.ts";
 
 export type AudioMode = "microphone" | "demo";
+// How analysis frames reach the main thread: polled from an AnalyserNode, or
+// pushed by an AudioWorklet every ANALYSIS_HOP_MS (same frame size).
+export type FrameSource = "analyser" | "worklet";
+export type PushedFrame = {
+  samples: Float32Array;
+  sampleRate: number;
+  waitMs: number; // newest sample → arrival in main-thread JS (AudioContext clock)
+  arrivedAt: number; // performance.now() at arrival
+};
 export type InputStatus = "idle" | "starting" | "running" | "paused" | "error";
 export type InputState = {
   status: InputStatus;
@@ -28,6 +39,8 @@ type Session = {
   // Only when historySeconds > 0: the worklet and the last seconds of sound.
   capture?: AudioWorkletNode;
   history?: SoundHistory;
+  // Only when frameSource is "worklet".
+  frames?: AudioWorkletNode;
   ready: boolean;
 };
 
@@ -46,6 +59,9 @@ export class AudioInput {
   private notify: (state: InputState) => void;
   private readonly frameSize: FrameSize;
   private readonly historySeconds: number;
+  private frameSource: FrameSource = "analyser";
+  private frameListeners = new Set<(frame: PushedFrame) => void>();
+  private mode: AudioMode | null = null;
 
   constructor(
     notify: (state: InputState) => void,
@@ -59,6 +75,7 @@ export class AudioInput {
 
   async start(mode: AudioMode): Promise<void> {
     this.stop();
+    this.mode = mode;
     const generation = this.generation;
     this.notify({ ...idleState, status: "starting", mode });
 
@@ -77,6 +94,8 @@ export class AudioInput {
 
       if (generation !== this.generation) return;
       if (this.historySeconds > 0) await this.connectHistory(session);
+      if (generation !== this.generation) return;
+      if (this.frameSource === "worklet") await this.connectFrames(session);
       if (generation !== this.generation) return;
       session.ready = true;
       this.watchContextState(session, mode, generation);
@@ -228,6 +247,46 @@ export class AudioInput {
     session.history = history;
   }
 
+  // source → frame worklet → silent output. Each message is one analysis frame.
+  private async connectFrames(session: Session): Promise<void> {
+    const url = URL.createObjectURL(new Blob([FRAME_WORKLET], { type: "text/javascript" }));
+    try {
+      await session.context.audioWorklet.addModule(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const { context } = session;
+    const frames = new AudioWorkletNode(context, "sonora-frames", {
+      processorOptions: {
+        frameSize: session.samples.length,
+        hopSize: Math.round((ANALYSIS_HOP_MS / 1000) * context.sampleRate),
+      },
+    });
+    frames.port.onmessage = (event) => {
+      const arrivedAt = performance.now();
+      const { samples, endTime } = event.data as { samples: Float32Array; endTime: number };
+      const waitMs = Math.max(0, (context.currentTime - endTime) * 1000);
+      const frame = { samples, sampleRate: context.sampleRate, waitMs, arrivedAt };
+      this.frameListeners.forEach((listener) => listener(frame));
+    };
+    session.source?.connect(frames);
+    frames.connect(session.mute);
+    session.frames = frames;
+  }
+
+  /** Frames pushed by the worklet (only while frameSource is "worklet"). */
+  subscribeFrames(listener: (frame: PushedFrame) => void): () => void {
+    this.frameListeners.add(listener);
+    return () => this.frameListeners.delete(listener);
+  }
+
+  /** Switches the frame path; a running source restarts with it. */
+  setFrameSource(source: FrameSource): void {
+    if (source === this.frameSource) return;
+    this.frameSource = source;
+    if (this.session && this.mode) void this.start(this.mode);
+  }
+
   private watchContextState(
     session: Session,
     mode: AudioMode,
@@ -340,6 +399,10 @@ export class AudioInput {
     if (session.capture) {
       session.capture.port.onmessage = null;
       session.capture.disconnect();
+    }
+    if (session.frames) {
+      session.frames.port.onmessage = null;
+      session.frames.disconnect();
     }
     session.mute.disconnect();
     if (session.context.state !== "closed") {
