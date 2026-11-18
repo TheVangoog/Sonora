@@ -28,6 +28,10 @@ export default function AppHeader() {
             <AppIcon name="mic" size={18} />
             Record
           </NavLink>
+          <NavLink to="/account">
+            <AppIcon name="user" size={18} />
+            Account
+          </NavLink>
         </nav>
         <span className="header-caption">A small space for a big sound</span>
       </div>

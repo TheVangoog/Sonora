@@ -84,6 +84,23 @@ npm run dev        # http://localhost:5173
 
 The microphone needs `localhost` or HTTPS. The test signal works anywhere.
 
+### Optional account (backend)
+
+Sonora works without an account. Signing in keeps the settings on the server and records practice statistics (minutes, notes in tune, chords; never audio). The API is Node.js + Express in [`server/`](server/) with a libSQL (SQLite-compatible) database: a local file in development, [Turso](https://turso.tech) in production.
+
+```sh
+npm run server     # API on http://localhost:3001 (database file server/data/sonora.db)
+npm run dev        # the dev server forwards /api to it
+```
+
+| Endpoint | |
+|---|---|
+| `POST /api/auth/register`, `/login`, `/logout` · `GET /api/me` | email + password (scrypt), session cookie (httpOnly, SameSite=Lax) |
+| `GET` / `PUT /api/settings` | the same settings as in the browser, validated with `parseSettings` |
+| `POST /api/stats/sessions` · `GET /api/stats/summary?days=7` | practice sessions and their summary |
+
+Deployment: the API is one Vercel Function in the same project as the site ([`api/index.ts`](api/index.ts), [`vercel.json`](vercel.json)), so `/api` is on the same domain and the cookie is first-party. It needs `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`; step by step: [`docs/BACKEND-DEPLOY.md`](docs/BACKEND-DEPLOY.md).
+
 ```sh
 npm test           # unit tests
 npm run build      # type check + production build into dist/
@@ -110,6 +127,8 @@ Recordings are not part of the repository (GuitarSet is ~2 GB). See [`tests/reco
 src/audio/        signal processing: FFT, chroma, templates, level gate, engines
 src/hooks/        connects audio to React
 src/components/   UI pieces;  src/views/  pages
+src/account/      sign-in state and settings sync;  src/stats/  practice statistics
+server/           the API (Express + libSQL);  api/  its Vercel Function entry
 public/models/    the Basic Pitch model (loaded only when AI is turned on)
 scripts/          evaluation and tuning tools
 tests/            unit tests (node --test)
@@ -118,7 +137,7 @@ docs/             notes and results (in Ukrainian)
 
 ## Tech
 
-React 19 · TypeScript · Vite · Web Audio API (AudioWorklet) · YIN pitch detection · TensorFlow.js · [Basic Pitch](https://github.com/spotify/basic-pitch)
+React 19 · TypeScript · Vite · Node.js + Express + libSQL/Turso · Web Audio API (AudioWorklet) · YIN pitch detection · TensorFlow.js · [Basic Pitch](https://github.com/spotify/basic-pitch)
 
 ## Credits
 

@@ -21,7 +21,7 @@ export default function NotesView() {
             </span>
             <span className="mode-caption">C · D · E · F · G · A · B</span>
           </div>
-          <AudioWorkspace title="Note finder" icon="note">
+          <AudioWorkspace title="Note finder" icon="note" practicePage="notes">
             {(pitch) => <NoteDisplay pitch={pitch} />}
           </AudioWorkspace>
           <p className="under-card">

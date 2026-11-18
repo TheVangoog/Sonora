@@ -20,15 +20,19 @@
     "eval:test": "node scripts/evaluate-test.ts",
     "bench:basic-pitch": "node scripts/bench-basic-pitch.ts",
     "replay:live": "node scripts/replay-live.ts",
-    "measure:tuner": "node scripts/measure-tuner.ts"
+    "measure:tuner": "node scripts/measure-tuner.ts",
+    "server": "node server/index.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@spotify/basic-pitch": "^1.0.1",
+    "express": "^5.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router": "^7.9.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",

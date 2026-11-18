@@ -22,3 +22,10 @@ export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {
   const settings = useSyncExternalStore(store.subscribe, store.get);
   return [settings, (patch) => store.update(patch)];
 }
+
+/** The store itself, for code that syncs it (the account). */
+export function useSettingsStore(): SettingsStore {
+  const store = useContext(SettingsContext);
+  if (!store) throw new Error("useSettingsStore() needs a <SettingsProvider> above it.");
+  return store;
+}

@@ -18,6 +18,9 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   define: { __SONORA_COMMIT__: JSON.stringify(buildCommit()) },
+  // npm run dev: /api goes to the local API (npm run server).
+  server: { proxy: { "/api": "http://localhost:3001" } },
+  preview: { proxy: { "/api": "http://localhost:3001" } },
   // Keep symlinked paths as they are (needed in a restricted Windows setup).
   resolve: { preserveSymlinks: true },
 });

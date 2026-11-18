@@ -59,7 +59,7 @@ export default function TunerView() {
               </select>
             </label>
           </div>
-          <AudioWorkspace title="Tuner">
+          <AudioWorkspace title="Tuner" practicePage="tuner">
             {(pitch) => (
               <TunerDisplay
                 pitch={pitch}

@@ -3,6 +3,7 @@ import TunerView from "../views/TunerView.jsx";
 import NotesView from "../views/NotesView.jsx";
 import ChordsView from "../views/ChordsView.jsx";
 import RecordView from "../views/RecordView.jsx";
+import AccountView from "../views/AccountView.tsx";
 import NotFoundView from "../views/NotFoundView.jsx";
 
 export default function AppRoutes() {
@@ -13,6 +14,7 @@ export default function AppRoutes() {
       <Route path="/notes" element={<NotesView />} />
       <Route path="/chords" element={<ChordsView />} />
       <Route path="/record" element={<RecordView />} />
+      <Route path="/account" element={<AccountView />} />
       <Route path="*" element={<NotFoundView />} />
     </Routes>
   );

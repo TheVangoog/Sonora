@@ -11,3 +11,6 @@ tests/recordings/*
 .claude/
 .openai/
 .vercel/
+
+# Local database of the API
+server/data/
