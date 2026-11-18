@@ -7,9 +7,6 @@ dist/
 tests/recordings/*
 !tests/recordings/README.md
 
-# Local tool settings
-.claude/
-.openai/
 .vercel/
 
 # Local database of the API
