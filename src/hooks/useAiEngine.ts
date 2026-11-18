@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ChordEngine } from "../audio/engines/chordEngine.ts";
 import { createBrowserBasicPitchEngine } from "../audio/engines/basicPitchBrowser.ts";
+import { chordTiming } from "../audio/chordTiming.ts";
 
 export type AiStatus = "off" | "preparing" | "ready" | "error";
 
 // Module-level: the model loads and warms up only once per page.
 let sharedEngine: ChordEngine | null = null;
+let loaded = false; // the load time is measured once; later the model is already there
 function getAiEngine(): ChordEngine {
   return (sharedEngine ??= createBrowserBasicPitchEngine());
 }
@@ -26,9 +28,12 @@ export function useAiEngine(enabled: boolean) {
     let cancelled = false;
     setStatus("preparing");
     setError(null);
+    const startedAt = performance.now();
     getAiEngine()
       .prepare?.()
       .then(() => {
+        if (!loaded) chordTiming.modelLoaded(performance.now() - startedAt);
+        loaded = true;
         if (!cancelled) setStatus("ready");
       })
       .catch((reason: unknown) => {

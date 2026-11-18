@@ -6,6 +6,8 @@ import AudioSourceControls from "./AudioSourceControls.tsx";
 import ChordDisplay from "./ChordDisplay.tsx";
 import { useAudioInput } from "../hooks/useAudioInput.ts";
 import { usePracticeTracking } from "../stats/usePracticeTracking.ts";
+import { chordTiming } from "../audio/chordTiming.ts";
+import type { ChordTimingSummary } from "../audio/chordTiming.ts";
 import { useChordDetection } from "../hooks/useChordDetection.ts";
 import { useAiEngine } from "../hooks/useAiEngine.ts";
 import type { AiStatus } from "../hooks/useAiEngine.ts";
@@ -102,6 +104,7 @@ export default function ChordWorkspace() {
       <div className="workspace-content">
         <ChordDisplay {...chordState} />
       </div>
+      <ChordTimingLine running={audio.status === "running"} />
       <SignalMonitor
         running={audio.status === "running"}
         sampleRate={audio.sampleRate}
@@ -161,4 +164,24 @@ function engineNote(useAi: boolean, status: AiStatus, error: string | null) {
     return `AI is off: ${error}. Switched to the algorithm; press AI to try again.`;
   }
   return "AI (Basic Pitch neural network): listens to the last 2 s and answers twice per second. More accurate, but reacts with a ~1–2 s delay.";
+}
+
+// Speed of the page, for the measurements on real devices (docs/MEASUREMENT-PROTOCOL.md).
+function ChordTimingLine({ running }: { running: boolean }) {
+  const [summary, setSummary] = useState<ChordTimingSummary | null>(null);
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setSummary(chordTiming.summary()), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+  if (!summary) return null;
+  const ms = (value: number) => (Number.isFinite(value) ? `${Math.round(value)} ms` : "—");
+  const load = summary.modelLoadMs.at(-1);
+  return (
+    <p className="engine-note" role="status">
+      Strum → chord: first {ms(summary.firstResult.median)} · change median {ms(summary.reaction.median)}, p95{" "}
+      {ms(summary.reaction.p95)} (n = {summary.reaction.count}) · settled median {ms(summary.settle.median)}
+      {load !== undefined && <> · AI loaded in {ms(load)}</>}
+    </p>
+  );
 }

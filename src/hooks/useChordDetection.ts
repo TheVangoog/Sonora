@@ -7,6 +7,7 @@ import type { ChordEngine } from "../audio/engines/chordEngine.ts";
 import { AI_LIVE, DSP_LIVE, LiveChordTracker } from "../audio/liveChordTracker.ts";
 import { measureSignal } from "../audio/signal.ts";
 import { ToneDetector, tunerFrameSize } from "../audio/pitch.ts";
+import { chordTiming } from "../audio/chordTiming.ts";
 import type { PitchReading } from "../audio/pitch.ts";
 
 type ReadSound = { samples: Float32Array; sampleRate: number } | null;
@@ -56,6 +57,7 @@ export function useChordDetection(
   useEffect(() => {
     setState(IDLE_STATE);
     if (!running) return;
+    chordTiming.start();
 
     let detector: ChordDetector | null = null;
     let frameSize = 0;
@@ -76,7 +78,17 @@ export function useChordDetection(
     }
 
     function publish(analysed: ChordReading, playing: boolean, analysisMs: number | null) {
-      setState({ ...tracker.update(analysed, playing, performance.now(), tone), analysisMs });
+      const now = performance.now();
+      const view = tracker.update(analysed, playing, now, tone);
+      chordTiming.show(view.shownChord?.name ?? null, now);
+      setState({ ...view, analysisMs });
+    }
+
+    // The level of every short frame tells the timing when a strum happened.
+    function hear(dbfs: number): boolean {
+      const playing = tracker.hear(dbfs);
+      chordTiming.level(dbfs, playing, performance.now());
+      return playing;
     }
 
     function analyzeWithDsp(frame: NonNullable<ReadSound>) {
@@ -86,7 +98,7 @@ export function useChordDetection(
       }
       const analysed = detector.analyze(frame.samples, frame.sampleRate);
       listenForOneNote(frame);
-      publish(analysed, tracker.hear(analysed.dbfs), null);
+      publish(analysed, hear(analysed.dbfs), null);
     }
 
     // Runs the network only while the level gate is open.
@@ -115,7 +127,7 @@ export function useChordDetection(
           analyzeWithDsp(frame);
         } else {
           // In AI mode the short frames only teach the room's silence gate.
-          tracker.hear(measureSignal(frame.samples).dbfs);
+          hear(measureSignal(frame.samples).dbfs);
           listenForOneNote(frame);
           if (!aiBusy && time - lastAiAnalysis >= AI_INTERVAL_MS) {
             lastAiAnalysis = time;
