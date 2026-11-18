@@ -33,6 +33,7 @@ export default function ChordWorkspace() {
     audio.readHistory,
     ai.engine,
     allChords ? "extended" : "basic",
+    ai.fail,
   );
 
   const [demoChord, setDemoChord] = useState("Am");
@@ -64,7 +65,7 @@ export default function ChordWorkspace() {
           <button
             aria-pressed={useAi}
             className={useAi ? "selected" : undefined}
-            onClick={() => setUseAi(true)}
+            onClick={() => (ai.status === "error" ? ai.retry() : setUseAi(true))}
           >
             AI
           </button>
@@ -147,6 +148,8 @@ function engineNote(useAi: boolean, status: AiStatus, error: string | null) {
   if (status === "preparing") {
     return "AI is loading and warming up (up to ~15 s the first time). The algorithm runs meanwhile.";
   }
-  if (status === "error") return `AI could not start: ${error}. The algorithm is running.`;
+  if (status === "error") {
+    return `AI is off: ${error}. Switched to the algorithm; press AI to try again.`;
+  }
   return "AI (Basic Pitch neural network): listens to the last 2 s and answers twice per second. More accurate, but reacts with a ~1–2 s delay.";
 }

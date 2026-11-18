@@ -1,20 +1,15 @@
 import { NOTE_NAMES } from "../audio/notes.ts";
-import { CHORD_MESSAGES, MIN_TONE_LEVEL } from "../audio/chords.ts";
+import { MIN_TONE_LEVEL } from "../audio/chords.ts";
+import { chordViewOf } from "../audio/chordView.ts";
 import { MARGIN_DB } from "../audio/levelGate.ts";
 import type { ChordState } from "../hooks/useChordDetection.ts";
 
-// Priority: shownChord (confident) → likelyChord (guess, muted) → heldChord (faded).
-export default function ChordDisplay({
-  reading,
-  shownChord,
-  likelyChord,
-  heldChord,
-  roomDbfs,
-  analysisMs,
-}: ChordState) {
-  const chord = shownChord ?? likelyChord ?? heldChord;
-  const isHeld = !shownChord && !likelyChord && heldChord !== null;
-  const isGuess = !shownChord && likelyChord !== null;
+export default function ChordDisplay(state: ChordState) {
+  const { reading, roomDbfs, analysisMs } = state;
+  const view = chordViewOf(state);
+  const chord = view.chord;
+  const isHeld = view.kind === "held";
+  const isGuess = view.kind === "guess";
   const chordTones = new Set(chord?.tones ?? []);
   const confidencePercent = Math.round(reading.confidence * 100);
 
@@ -23,24 +18,18 @@ export default function ChordDisplay({
       <span className="display-caption">CHORD RECOGNITION</span>
 
       <div
-        className={`chord-value ${chord ? "has-chord" : ""} ${isGuess ? "is-guess" : ""} ${isHeld ? "is-held" : ""}`}
+        className={`chord-value ${view.kind !== "none" ? "has-chord" : ""} ${isGuess || view.kind === "note" ? "is-guess" : ""} ${isHeld ? "is-held" : ""}`}
         aria-label={
-          chord
-            ? `${isHeld ? "Last chord" : isGuess ? "Probably chord" : "Chord"} ${chord.name}`
-            : "No chord detected yet"
+          view.kind === "none"
+            ? "No chord detected yet"
+            : view.kind === "note"
+              ? `One note ${view.title}, not a chord`
+              : `${isHeld ? "Last chord" : isGuess ? "Probably chord" : "Chord"} ${view.title}`
         }
       >
-        {chord ? chord.name : "—"}
+        {view.title}
       </div>
-      <p className="chord-name">
-        {chord
-          ? isHeld
-            ? `Last chord: ${chord.fullName}`
-            : isGuess
-              ? `Probably: ${chord.fullName} · not sure`
-              : chord.fullName
-          : CHORD_MESSAGES[reading.status]}
-      </p>
+      <p className="chord-name">{view.caption}</p>
 
       {chord && (
         <ul

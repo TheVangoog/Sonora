@@ -18,3 +18,23 @@ export type ChordEngine = {
    */
   prepare?: () => Promise<void>;
 };
+
+export type SafeAnalysis =
+  | { ok: true; reading: ChordReading; ms: number }
+  | { ok: false; error: unknown };
+
+/** Runs one analysis and turns a thrown error into a value, so the page can fall back to the algorithm. */
+export async function analyzeSafely(
+  engine: ChordEngine,
+  samples: Float32Array,
+  sampleRate: number,
+  rules?: Partial<ChordRules>,
+): Promise<SafeAnalysis> {
+  const started = performance.now();
+  try {
+    const reading = await engine.analyze(samples, sampleRate, rules);
+    return { ok: true, reading, ms: performance.now() - started };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}

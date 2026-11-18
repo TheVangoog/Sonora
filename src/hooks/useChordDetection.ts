@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { ChordDetector, emptyReading, IDLE_CHORD } from "../audio/chords.ts";
 import type { ChordReading, ChordRules } from "../audio/chords.ts";
 import type { ChordTemplate } from "../audio/chordTemplates.ts";
+import { analyzeSafely } from "../audio/engines/chordEngine.ts";
 import type { ChordEngine } from "../audio/engines/chordEngine.ts";
 import { AI_LIVE, DSP_LIVE, LiveChordTracker } from "../audio/liveChordTracker.ts";
 import { measureSignal } from "../audio/signal.ts";
+import { ToneDetector, tunerFrameSize } from "../audio/pitch.ts";
+import type { PitchReading } from "../audio/pitch.ts";
 
 type ReadSound = { samples: Float32Array; sampleRate: number } | null;
 type ReadFrame = () => ReadSound;
@@ -19,15 +22,19 @@ export type ChordState = {
   shownChord: ChordTemplate | null; // confident, stable chord
   likelyChord: ChordTemplate | null; // the most likely chord, even without confidence
   heldChord: ChordTemplate | null; // the sound faded: the last chord for a few more seconds (faded)
+  singleNote: number | null; // Hz when one note sounds instead of a chord
   roomDbfs: number | null; // the room's background level; null while still learning
   analysisMs: number | null; // how long the latest AI analysis took (null for the algorithm)
 };
+
+const ignoreError = () => {};
 
 const IDLE_STATE: ChordState = {
   reading: IDLE_CHORD,
   shownChord: null,
   likelyChord: null,
   heldChord: null,
+  singleNote: null,
   roomDbfs: null,
   analysisMs: null,
 };
@@ -35,12 +42,14 @@ const IDLE_STATE: ChordState = {
 // Timing and React state only; what to show is decided by LiveChordTracker.
 // aiEngine = null → algorithm; otherwise → AI on the last 2 s of sound.
 // vocabulary: "basic" = only the 24 major and minor chords; "extended" = all 108.
+// onAiError: the AI analysis threw; the caller switches back to the algorithm.
 export function useChordDetection(
   running: boolean,
   readFrame: ReadFrame,
   readHistory: ReadHistory,
   aiEngine: ChordEngine | null,
   vocabulary: ChordRules["vocabulary"] = "extended",
+  onAiError: (reason: unknown) => void = ignoreError,
 ): ChordState {
   const [state, setState] = useState<ChordState>(IDLE_STATE);
 
@@ -56,9 +65,18 @@ export function useChordDetection(
     let lastAiAnalysis = -Infinity;
     let aiBusy = false; // the AI is still busy with the previous window: do not start a new one
     let cancelled = false; // the effect was cleaned up: ignore a late AI answer
+    const toneDetector = new ToneDetector();
+    let tone: PitchReading | null = null; // YIN on the newest short frame: one note or more?
+
+    function listenForOneNote(frame: NonNullable<ReadSound>) {
+      const size = tunerFrameSize(frame.sampleRate);
+      tone = frame.samples.length >= size
+        ? toneDetector.analyze(frame.samples.subarray(frame.samples.length - size), frame.sampleRate)
+        : null;
+    }
 
     function publish(analysed: ChordReading, playing: boolean, analysisMs: number | null) {
-      setState({ ...tracker.update(analysed, playing, performance.now()), analysisMs });
+      setState({ ...tracker.update(analysed, playing, performance.now(), tone), analysisMs });
     }
 
     function analyzeWithDsp(frame: NonNullable<ReadSound>) {
@@ -67,6 +85,7 @@ export function useChordDetection(
         detector = new ChordDetector(frameSize, { vocabulary });
       }
       const analysed = detector.analyze(frame.samples, frame.sampleRate);
+      listenForOneNote(frame);
       publish(analysed, tracker.hear(analysed.dbfs), null);
     }
 
@@ -80,13 +99,11 @@ export function useChordDetection(
         return;
       }
       aiBusy = true;
-      try {
-        const started = performance.now();
-        const analysed = await engine.analyze(sound.samples, sound.sampleRate, { vocabulary });
-        if (!cancelled) publish(analysed, true, performance.now() - started);
-      } finally {
-        aiBusy = false;
-      }
+      const result = await analyzeSafely(engine, sound.samples, sound.sampleRate, { vocabulary });
+      aiBusy = false;
+      if (cancelled) return;
+      if (result.ok) publish(result.reading, true, result.ms);
+      else onAiError(result.error);
     }
 
     function update(time: number) {
@@ -99,6 +116,7 @@ export function useChordDetection(
         } else {
           // In AI mode the short frames only teach the room's silence gate.
           tracker.hear(measureSignal(frame.samples).dbfs);
+          listenForOneNote(frame);
           if (!aiBusy && time - lastAiAnalysis >= AI_INTERVAL_MS) {
             lastAiAnalysis = time;
             void analyzeWithAi(aiEngine, frame.sampleRate);
@@ -113,7 +131,7 @@ export function useChordDetection(
       cancelled = true;
       cancelAnimationFrame(request);
     };
-  }, [running, readFrame, readHistory, aiEngine, vocabulary]);
+  }, [running, readFrame, readHistory, aiEngine, vocabulary, onAiError]);
 
   // Stop and pause clear the old chord from the screen at once.
   return running ? state : IDLE_STATE;
