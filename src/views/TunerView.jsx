@@ -1,13 +1,16 @@
-import { useState } from "react";
 import PageHeading from "../components/PageHeading.jsx";
 import AudioWorkspace from "../components/AudioWorkspace.tsx";
 import TunerDisplay from "../components/TunerDisplay.tsx";
 import GuideCard from "../components/GuideCard.jsx";
 import AppIcon from "../components/AppIcon.jsx";
+import { useSettings } from "../settings/SettingsContext.tsx";
+import { REFERENCE_CHOICES } from "../settings/settingsStore.ts";
 
 export default function TunerView() {
-  const [instrument, setInstrument] = useState("chromatic");
-  const [referenceFrequency, setReferenceFrequency] = useState(440);
+  const [settings, updateSettings] = useSettings();
+  const { instrument, referenceHz: referenceFrequency } = settings;
+  const setInstrument = (value) => updateSettings({ instrument: value });
+  const setReferenceFrequency = (value) => updateSettings({ referenceHz: value });
 
   return (
     <>
@@ -48,9 +51,11 @@ export default function TunerView() {
                 }
                 aria-label="Reference frequency of A4"
               >
-                <option value={432}>432 Hz</option>
-                <option value={440}>440 Hz</option>
-                <option value={442}>442 Hz</option>
+                {REFERENCE_CHOICES.map((hz) => (
+                  <option key={hz} value={hz}>
+                    {hz} Hz
+                  </option>
+                ))}
               </select>
             </label>
           </div>

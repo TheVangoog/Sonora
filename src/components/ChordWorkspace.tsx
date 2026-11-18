@@ -9,6 +9,7 @@ import { useChordDetection } from "../hooks/useChordDetection.ts";
 import { useAiEngine } from "../hooks/useAiEngine.ts";
 import type { AiStatus } from "../hooks/useAiEngine.ts";
 import { CHORD_FRAME_SIZE } from "../audio/chords.ts";
+import { useSettings } from "../settings/SettingsContext.tsx";
 import {
   DEMO_CHORD_NAMES,
   demoChordFrequencies,
@@ -19,8 +20,12 @@ const HISTORY_SECONDS = 3;
 
 export default function ChordWorkspace() {
   const audio = useAudioInput(CHORD_FRAME_SIZE, HISTORY_SECONDS);
-  const [useAi, setUseAi] = useState(false);
-  const [allChords, setAllChords] = useState(true);
+  const [settings, updateSettings] = useSettings();
+  const useAi = settings.chordEngine === "ai";
+  const allChords = settings.chordVocabulary === "extended";
+  const setUseAi = (on: boolean) => updateSettings({ chordEngine: on ? "ai" : "dsp" });
+  const setAllChords = (all: boolean) =>
+    updateSettings({ chordVocabulary: all ? "extended" : "basic" });
   const ai = useAiEngine(useAi);
   const chordState = useChordDetection(
     audio.status === "running",
